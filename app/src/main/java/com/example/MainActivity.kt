@@ -220,7 +220,7 @@ fun StudyHubBottomNavBar(
             verticalAlignment = Alignment.CenterVertically
         ) {
             NavBarItem(
-                label = "Home",
+                label = AppStrings.navHome(lang),
                 selectedIcon = Icons.Filled.Home,
                 unselectedIcon = Icons.Outlined.Home,
                 isSelected = currentTab == BottomTab.HOME,
@@ -230,7 +230,7 @@ fun StudyHubBottomNavBar(
             )
 
             NavBarItem(
-                label = "Syllabus",
+                label = AppStrings.navSyllabus(lang),
                 selectedIcon = Icons.Filled.MenuBook,
                 unselectedIcon = Icons.Outlined.MenuBook,
                 isSelected = currentTab == BottomTab.SYLLABUS,
@@ -240,7 +240,7 @@ fun StudyHubBottomNavBar(
             )
 
             NavBarItem(
-                label = "Focus",
+                label = AppStrings.navFocus(lang),
                 selectedIcon = Icons.Filled.Timer,
                 unselectedIcon = Icons.Outlined.Timer,
                 isSelected = currentTab == BottomTab.FOCUS,
@@ -250,7 +250,7 @@ fun StudyHubBottomNavBar(
             )
 
             NavBarItem(
-                label = "Calendar",
+                label = AppStrings.navCalendar(lang),
                 selectedIcon = Icons.Filled.CalendarMonth,
                 unselectedIcon = Icons.Outlined.CalendarMonth,
                 isSelected = currentTab == BottomTab.CALENDAR,
@@ -260,7 +260,7 @@ fun StudyHubBottomNavBar(
             )
 
             NavBarItem(
-                label = "Profile",
+                label = AppStrings.navProfile(lang),
                 selectedIcon = Icons.Filled.Person,
                 unselectedIcon = Icons.Outlined.Person,
                 isSelected = currentTab == BottomTab.PROFILE,

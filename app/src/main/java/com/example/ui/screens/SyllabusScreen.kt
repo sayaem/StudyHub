@@ -20,21 +20,19 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Calculate
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Computer
 import androidx.compose.material.icons.filled.Eco
 import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.Science
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -44,7 +42,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -52,21 +49,14 @@ import androidx.compose.ui.unit.sp
 import com.example.data.model.ChapterEntity
 import com.example.data.model.SubjectEntity
 import com.example.ui.MainViewModel
-import com.example.ui.components.AddSubjectDialog
+import com.example.ui.components.AddSubjectBottomSheet
 import com.example.ui.components.StudyHubCard
-import com.example.ui.theme.AlertRed
-import com.example.ui.theme.AlertRedLight
 import com.example.ui.theme.DarkBorder
 import com.example.ui.theme.DarkMidnightSurface
 import com.example.ui.theme.DarkTextMuted
 import com.example.ui.theme.DarkTextWhite
-import com.example.ui.theme.MintGreen
-import com.example.ui.theme.MintGreenLight
 import com.example.ui.theme.NavyText
-import com.example.ui.theme.PurpleLight
-import com.example.ui.theme.PurpleSubject
 import com.example.ui.theme.RoyalBlue
-import com.example.ui.theme.RoyalBlueDark
 import com.example.ui.theme.RoyalBlueLight
 import com.example.ui.theme.SlateBorder
 import com.example.ui.theme.SlateMuted
@@ -84,12 +74,27 @@ fun SyllabusScreen(
     modifier: Modifier = Modifier
 ) {
     var selectedFilter by remember { mutableStateOf("ALL") } // "ALL", "BY_SUBJECT", "BY_STATUS"
+    var statusSubFilter by remember { mutableStateOf("ALL") } // "ALL", "IN_PROGRESS", "COMPLETED", "NOT_STARTED"
+    var subjectSubFilter by remember { mutableStateOf<Long?>(null) }
     var showAddSubjectDialog by remember { mutableStateOf(false) }
 
     val cardBg = if (isDarkTheme) DarkMidnightSurface else Color.White
     val borderCol = if (isDarkTheme) DarkBorder else MaterialTheme.colorScheme.outlineVariant
     val textPrimary = if (isDarkTheme) DarkTextWhite else NavyText
     val textSecondary = if (isDarkTheme) DarkTextMuted else SlateMuted
+
+    val displayedSubjects = subjects.filter { sub ->
+        val matchesSubject = if (selectedFilter == "BY_SUBJECT" && subjectSubFilter != null) {
+            sub.id == subjectSubFilter
+        } else true
+
+        val matchesStatus = if (selectedFilter == "BY_STATUS" && statusSubFilter != "ALL") {
+            val subChapters = chapters.filter { it.subjectId == sub.id }
+            subChapters.any { it.status == statusSubFilter }
+        } else true
+
+        matchesSubject && matchesStatus
+    }
 
     LazyColumn(
         modifier = modifier
@@ -101,7 +106,7 @@ fun SyllabusScreen(
         // Header: "Syllabus"
         item {
             Text(
-                text = "Syllabus",
+                text = AppStrings.syllabusTitle(lang),
                 style = MaterialTheme.typography.headlineMedium.copy(
                     fontWeight = FontWeight.Bold,
                     fontSize = 24.sp,
@@ -118,19 +123,23 @@ fun SyllabusScreen(
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 SyllabusTopPill(
-                    label = "All Subjects",
+                    label = AppStrings.allSubjects(lang),
                     isSelected = selectedFilter == "ALL",
                     isDarkTheme = isDarkTheme,
-                    onClick = { selectedFilter = "ALL" }
+                    onClick = {
+                        selectedFilter = "ALL"
+                        subjectSubFilter = null
+                        statusSubFilter = "ALL"
+                    }
                 )
                 SyllabusTopPill(
-                    label = "By Subject",
+                    label = AppStrings.bySubject(lang),
                     isSelected = selectedFilter == "BY_SUBJECT",
                     isDarkTheme = isDarkTheme,
                     onClick = { selectedFilter = "BY_SUBJECT" }
                 )
                 SyllabusTopPill(
-                    label = "By Status",
+                    label = AppStrings.byStatus(lang),
                     isSelected = selectedFilter == "BY_STATUS",
                     isDarkTheme = isDarkTheme,
                     onClick = { selectedFilter = "BY_STATUS" }
@@ -138,87 +147,223 @@ fun SyllabusScreen(
             }
         }
 
-        // Subject Cards
-        items(subjects, key = { it.id }) { subject ->
-            val subjectChapters = chapters.filter { it.subjectId == subject.id }
-            val completedCount = subjectChapters.count { it.status == "COMPLETED" }
-            val totalCount = subjectChapters.size.coerceAtLeast(1)
-            val percentage = (completedCount.toFloat() / totalCount.toFloat() * 100).toInt()
-
-            val (icon, iconBg, iconTint) = when (subject.nameEn) {
-                "Physics" -> Triple(Icons.Default.Science, if (isDarkTheme) PurpleSubject.copy(alpha = 0.2f) else PurpleLight, PurpleSubject)
-                "Chemistry" -> Triple(Icons.Default.Science, if (isDarkTheme) MintGreen.copy(alpha = 0.2f) else MintGreenLight, MintGreen)
-                "Mathematics" -> Triple(Icons.Default.Calculate, if (isDarkTheme) PurpleSubject.copy(alpha = 0.2f) else PurpleLight, PurpleSubject)
-                "English" -> Triple(Icons.Default.MenuBook, if (isDarkTheme) AlertRed.copy(alpha = 0.2f) else AlertRedLight, AlertRed)
-                else -> Triple(Icons.Default.Eco, if (isDarkTheme) MintGreen.copy(alpha = 0.2f) else MintGreenLight, MintGreen)
+        if (selectedFilter == "BY_SUBJECT" && subjects.isNotEmpty()) {
+            item {
+                LazyRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    item {
+                        SyllabusTopPill(
+                            label = AppStrings.allPill(lang),
+                            isSelected = subjectSubFilter == null,
+                            isDarkTheme = isDarkTheme,
+                            onClick = { subjectSubFilter = null }
+                        )
+                    }
+                    items(subjects, key = { it.id }) { s ->
+                        val subName = if (lang == AppLanguage.BANGLA && s.nameBn.isNotBlank()) s.nameBn else s.nameEn
+                        SyllabusTopPill(
+                            label = subName,
+                            isSelected = subjectSubFilter == s.id,
+                            isDarkTheme = isDarkTheme,
+                            onClick = { subjectSubFilter = s.id }
+                        )
+                    }
+                }
             }
+        }
 
-            StudyHubCard(
-                modifier = Modifier.fillMaxWidth(),
-                backgroundColor = cardBg,
-                borderColor = borderCol,
-                onClick = { onOpenSubject(subject.id) }
-            ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+        if (selectedFilter == "BY_STATUS") {
+            item {
+                LazyRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    item {
+                        SyllabusTopPill(
+                            label = AppStrings.allStatusesPill(lang),
+                            isSelected = statusSubFilter == "ALL",
+                            isDarkTheme = isDarkTheme,
+                            onClick = { statusSubFilter = "ALL" }
+                        )
+                    }
+                    item {
+                        SyllabusTopPill(
+                            label = AppStrings.statusInProgress(lang),
+                            isSelected = statusSubFilter == "IN_PROGRESS",
+                            isDarkTheme = isDarkTheme,
+                            onClick = { statusSubFilter = "IN_PROGRESS" }
+                        )
+                    }
+                    item {
+                        SyllabusTopPill(
+                            label = AppStrings.statusCompleted(lang),
+                            isSelected = statusSubFilter == "COMPLETED",
+                            isDarkTheme = isDarkTheme,
+                            onClick = { statusSubFilter = "COMPLETED" }
+                        )
+                    }
+                    item {
+                        SyllabusTopPill(
+                            label = AppStrings.statusNotStarted(lang),
+                            isSelected = statusSubFilter == "NOT_STARTED",
+                            isDarkTheme = isDarkTheme,
+                            onClick = { statusSubFilter = "NOT_STARTED" }
+                        )
+                    }
+                }
+            }
+        }
+
+        // Empty state when no subjects exist
+        if (displayedSubjects.isEmpty()) {
+            item {
+                StudyHubCard(
+                    modifier = Modifier.fillMaxWidth(),
+                    backgroundColor = cardBg,
+                    borderColor = borderCol
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(32.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Box(
-                                modifier = Modifier
-                                    .size(40.dp)
-                                    .background(iconBg, RoundedCornerShape(12.dp)),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    imageVector = icon,
-                                    contentDescription = null,
-                                    tint = iconTint,
-                                    modifier = Modifier.size(22.dp)
-                                )
+                        Box(
+                            modifier = Modifier
+                                .size(56.dp)
+                                .background(RoyalBlueLight, CircleShape),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.MenuBook,
+                                contentDescription = null,
+                                tint = RoyalBlue,
+                                modifier = Modifier.size(28.dp)
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(14.dp))
+                        Text(
+                            text = AppStrings.emptySubjectsTitle(lang),
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 16.sp,
+                            color = textPrimary
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            text = AppStrings.emptySubjectsDesc(lang),
+                            fontSize = 13.sp,
+                            color = textSecondary,
+                            lineHeight = 18.sp,
+                            modifier = Modifier.padding(horizontal = 8.dp)
+                        )
+                    }
+                }
+            }
+        } else {
+            // Subject Cards
+            items(displayedSubjects, key = { it.id }) { subject ->
+                val subjectChapters = chapters.filter { it.subjectId == subject.id }
+                val completedCount = subjectChapters.count { it.status == "COMPLETED" }
+                val totalCount = subjectChapters.size
+                val percentage = if (totalCount > 0) (completedCount.toFloat() / totalCount.toFloat() * 100).toInt() else 0
+
+                val subjectColor = try {
+                    Color(android.graphics.Color.parseColor(subject.colorHex))
+                } catch (e: Exception) {
+                    RoyalBlue
+                }
+
+                val icon = when {
+                    subject.nameEn.contains("Physics", ignoreCase = true) -> Icons.Default.Science
+                    subject.nameEn.contains("Chemistry", ignoreCase = true) -> Icons.Default.Science
+                    subject.nameEn.contains("Math", ignoreCase = true) -> Icons.Default.Calculate
+                    subject.nameEn.contains("ICT", ignoreCase = true) || subject.nameEn.contains("Computer", ignoreCase = true) -> Icons.Default.Computer
+                    subject.nameEn.contains("Biology", ignoreCase = true) -> Icons.Default.Eco
+                    else -> Icons.Default.MenuBook
+                }
+
+                val displayName = if (lang == AppLanguage.BANGLA && subject.nameBn.isNotBlank())
+                    subject.nameBn else subject.nameEn
+
+                StudyHubCard(
+                    modifier = Modifier.fillMaxWidth(),
+                    backgroundColor = cardBg,
+                    borderColor = borderCol,
+                    onClick = { onOpenSubject(subject.id) }
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(44.dp)
+                                        .background(subjectColor.copy(alpha = 0.15f), RoundedCornerShape(12.dp)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = icon,
+                                        contentDescription = null,
+                                        tint = subjectColor,
+                                        modifier = Modifier.size(24.dp)
+                                    )
+                                }
+
+                                Spacer(modifier = Modifier.width(14.dp))
+
+                                Column {
+                                    Text(
+                                        text = displayName,
+                                        style = MaterialTheme.typography.bodyLarge.copy(
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 16.sp
+                                        ),
+                                        color = textPrimary
+                                    )
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Text(
+                                        text = AppStrings.chaptersCount(completedCount, totalCount, lang),
+                                        fontSize = 12.sp,
+                                        color = textSecondary
+                                    )
+                                }
                             }
 
-                            Spacer(modifier = Modifier.width(12.dp))
-
-                            Column {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text(
-                                    text = subject.nameEn,
-                                    style = MaterialTheme.typography.bodyLarge.copy(
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 15.sp
-                                    ),
-                                    color = textPrimary
+                                    text = "${AppStrings.formatNumber(percentage, lang)}%",
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (percentage == 100) RoyalBlue else textSecondary
                                 )
-                                Spacer(modifier = Modifier.height(2.dp))
-                                Text(
-                                    text = "$completedCount / $totalCount chapters",
-                                    fontSize = 12.sp,
-                                    color = textSecondary
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                                    contentDescription = null,
+                                    tint = textSecondary,
+                                    modifier = Modifier.size(18.dp)
                                 )
                             }
                         }
 
-                        Text(
-                            text = "$percentage%",
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = textSecondary
+                        Spacer(modifier = Modifier.height(14.dp))
+
+                        val barProgress = if (totalCount > 0) (completedCount.toFloat() / totalCount.toFloat()).coerceIn(0f, 1f) else 0f
+                        LinearProgressIndicator(
+                            progress = { barProgress },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(6.dp)
+                                .clip(RoundedCornerShape(3.dp)),
+                            color = subjectColor,
+                            trackColor = if (isDarkTheme) Color(0xFF1E2C46) else Color(0xFFE2E8F0)
                         )
                     }
-
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    LinearProgressIndicator(
-                        progress = { (completedCount.toFloat() / totalCount.toFloat()).coerceIn(0f, 1f) },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(6.dp)
-                            .clip(RoundedCornerShape(3.dp)),
-                        color = RoyalBlue,
-                        trackColor = if (isDarkTheme) Color(0xFF1E2C46) else Color(0xFFE2E8F0)
-                    )
                 }
             }
         }
@@ -228,12 +373,12 @@ fun SyllabusScreen(
             Surface(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(48.dp)
-                    .clip(RoundedCornerShape(24.dp))
+                    .height(50.dp)
+                    .clip(RoundedCornerShape(14.dp))
                     .clickable { showAddSubjectDialog = true }
                     .testTag("add_subject_button"),
                 color = if (isDarkTheme) RoyalBlue.copy(alpha = 0.2f) else RoyalBlueLight,
-                shape = RoundedCornerShape(24.dp)
+                shape = RoundedCornerShape(14.dp)
             ) {
                 Row(
                     modifier = Modifier.fillMaxSize(),
@@ -246,9 +391,9 @@ fun SyllabusScreen(
                         tint = RoyalBlue,
                         modifier = Modifier.size(18.dp)
                     )
-                    Spacer(modifier = Modifier.width(6.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = "Add Subject",
+                        text = AppStrings.addSubjectAction(lang),
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Bold,
                         color = RoyalBlue
@@ -259,7 +404,9 @@ fun SyllabusScreen(
     }
 
     if (showAddSubjectDialog) {
-        AddSubjectDialog(
+        AddSubjectBottomSheet(
+            existingSubjects = subjects,
+            isDarkTheme = isDarkTheme,
             lang = lang,
             onDismiss = { showAddSubjectDialog = false },
             onConfirm = { nameEn, nameBn, colorHex ->

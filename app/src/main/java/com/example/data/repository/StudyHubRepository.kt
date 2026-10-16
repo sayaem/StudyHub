@@ -1,9 +1,11 @@
 package com.example.data.repository
 
 import com.example.data.local.StudyHubDatabase
-import com.example.data.local.populateInitialData
+import com.example.data.local.populateSampleDemoData
 import com.example.data.model.AdmissionTargetEntity
 import com.example.data.model.ChapterEntity
+import com.example.data.model.PlannerTaskEntity
+import com.example.data.model.RevisionItemEntity
 import com.example.data.model.StudySessionEntity
 import com.example.data.model.SubjectEntity
 import kotlinx.coroutines.Dispatchers
@@ -17,15 +19,21 @@ class StudyHubRepository(private val database: StudyHubDatabase) {
     val revisionChapters: Flow<List<ChapterEntity>> = database.chapterDao().getRevisionChapters()
     val allSessions: Flow<List<StudySessionEntity>> = database.studySessionDao().getAllSessions()
     val allAdmissions: Flow<List<AdmissionTargetEntity>> = database.admissionDao().getAllTargets()
+    val allPlannerTasks: Flow<List<PlannerTaskEntity>> = database.plannerTaskDao().getAllTasks()
+    val allRevisions: Flow<List<RevisionItemEntity>> = database.revisionItemDao().getAllRevisions()
+
+    fun getTasksByCategory(category: String): Flow<List<PlannerTaskEntity>> =
+        database.plannerTaskDao().getTasksByCategory(category)
 
     fun getChaptersForSubject(subjectId: Long): Flow<List<ChapterEntity>> =
         database.chapterDao().getChaptersBySubject(subjectId)
 
-    fun getSessionsSince(sinceMs: Long): Flow<List<StudySessionEntity>> =
-        database.studySessionDao().getSessionsSince(sinceMs)
-
     suspend fun insertSubject(subject: SubjectEntity): Long = withContext(Dispatchers.IO) {
         database.subjectDao().insertSubject(subject)
+    }
+
+    suspend fun updateSubject(subject: SubjectEntity) = withContext(Dispatchers.IO) {
+        database.subjectDao().updateSubject(subject)
     }
 
     suspend fun deleteSubject(subjectId: Long) = withContext(Dispatchers.IO) {
@@ -100,8 +108,46 @@ class StudyHubRepository(private val database: StudyHubDatabase) {
         database.admissionDao().updateTarget(target.copy(status = nextStatus))
     }
 
-    suspend fun resetToSampleData() = withContext(Dispatchers.IO) {
+    // Planner Tasks
+    suspend fun insertPlannerTask(task: PlannerTaskEntity): Long = withContext(Dispatchers.IO) {
+        database.plannerTaskDao().insertTask(task)
+    }
+
+    suspend fun insertPlannerTasks(tasks: List<PlannerTaskEntity>) = withContext(Dispatchers.IO) {
+        database.plannerTaskDao().insertTasks(tasks)
+    }
+
+    suspend fun updatePlannerTaskCompletion(id: Long, completed: Boolean) = withContext(Dispatchers.IO) {
+        database.plannerTaskDao().updateTaskCompletion(id, completed)
+    }
+
+    suspend fun deletePlannerTask(id: Long) = withContext(Dispatchers.IO) {
+        database.plannerTaskDao().deleteTaskById(id)
+    }
+
+    // Revision Items
+    suspend fun insertRevision(item: RevisionItemEntity): Long = withContext(Dispatchers.IO) {
+        database.revisionItemDao().insertRevision(item)
+    }
+
+    suspend fun updateRevisionProgress(id: Long, completedCount: Int, isCompleted: Boolean) = withContext(Dispatchers.IO) {
+        database.revisionItemDao().updateProgress(
+            id = id,
+            completed = completedCount,
+            isCompleted = isCompleted,
+            timestamp = System.currentTimeMillis()
+        )
+    }
+
+    suspend fun deleteRevision(id: Long) = withContext(Dispatchers.IO) {
+        database.revisionItemDao().deleteRevisionById(id)
+    }
+
+    suspend fun clearAllData() = withContext(Dispatchers.IO) {
         database.clearAllTables()
-        populateInitialData(database)
+    }
+
+    suspend fun loadDemoData() = withContext(Dispatchers.IO) {
+        populateSampleDemoData(database)
     }
 }

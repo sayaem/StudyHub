@@ -31,6 +31,8 @@ val PurpleSubject = Color(0xFF6366F1)
 val PurpleLight = Color(0xFFEEF2FF)
 val AmberWarning = Color(0xFFF59E0B)
 val AmberLight = Color(0xFFFFFBEB)
+val WarningAmber = AmberWarning
+val WarningAmberLight = AmberLight
 
 // Dark Theme (Exact Screen 10 / Screen 4 styling)
 val DarkMidnightBg = Color(0xFF0B1220)

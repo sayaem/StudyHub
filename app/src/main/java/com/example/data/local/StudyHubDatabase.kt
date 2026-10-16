@@ -4,14 +4,13 @@ import android.content.Context
 import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
-import androidx.sqlite.db.SupportSQLiteDatabase
 import com.example.data.model.AdmissionTargetEntity
 import com.example.data.model.ChapterEntity
+import com.example.data.model.PlannerTaskEntity
+import com.example.data.model.RevisionItemEntity
 import com.example.data.model.StudySessionEntity
 import com.example.data.model.SubjectEntity
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
 import java.util.Calendar
 
 @Database(
@@ -19,9 +18,11 @@ import java.util.Calendar
         SubjectEntity::class,
         ChapterEntity::class,
         StudySessionEntity::class,
-        AdmissionTargetEntity::class
+        AdmissionTargetEntity::class,
+        PlannerTaskEntity::class,
+        RevisionItemEntity::class
     ],
-    version = 1,
+    version = 2,
     exportSchema = false
 )
 abstract class StudyHubDatabase : RoomDatabase() {
@@ -29,6 +30,8 @@ abstract class StudyHubDatabase : RoomDatabase() {
     abstract fun chapterDao(): ChapterDao
     abstract fun studySessionDao(): StudySessionDao
     abstract fun admissionDao(): AdmissionDao
+    abstract fun plannerTaskDao(): PlannerTaskDao
+    abstract fun revisionItemDao(): RevisionItemDao
 
     companion object {
         @Volatile
@@ -41,33 +44,25 @@ abstract class StudyHubDatabase : RoomDatabase() {
                     StudyHubDatabase::class.java,
                     "studyhub_database"
                 )
-                    .addCallback(StudyHubDatabaseCallback(scope))
+                    .fallbackToDestructiveMigration()
                     .build()
                 INSTANCE = instance
                 instance
             }
         }
     }
-
-    private class StudyHubDatabaseCallback(
-        private val scope: CoroutineScope
-    ) : RoomDatabase.Callback() {
-        override fun onCreate(db: SupportSQLiteDatabase) {
-            super.onCreate(db)
-            INSTANCE?.let { database ->
-                scope.launch(Dispatchers.IO) {
-                    populateInitialData(database)
-                }
-            }
-        }
-    }
 }
 
-suspend fun populateInitialData(database: StudyHubDatabase) {
+// Explicit demo loader for optional demo mode testing
+suspend fun populateSampleDemoData(database: StudyHubDatabase) {
     val subjectDao = database.subjectDao()
     val chapterDao = database.chapterDao()
     val admissionDao = database.admissionDao()
     val sessionDao = database.studySessionDao()
+    val plannerDao = database.plannerTaskDao()
+    val revisionDao = database.revisionItemDao()
+
+    database.clearAllTables()
 
     val physicsId = subjectDao.insertSubject(
         SubjectEntity(nameEn = "Physics", nameBn = "পদার্থবিজ্ঞান", colorHex = "#6366F1", iconName = "atom", orderIndex = 0)
@@ -85,7 +80,7 @@ suspend fun populateInitialData(database: StudyHubDatabase) {
         SubjectEntity(nameEn = "Biology", nameBn = "জীববিজ্ঞান", colorHex = "#10B981", iconName = "leaf", orderIndex = 4)
     )
 
-    // Physics: 8 / 12 chapters completed (67%)
+    // Physics
     chapterDao.insertChapters(listOf(
         ChapterEntity(subjectId = physicsId, titleEn = "Mechanics", titleBn = "বলবিদ্যা", status = "COMPLETED", priority = "HIGH", revisionCount = 2, estimatedMinutes = 90),
         ChapterEntity(subjectId = physicsId, titleEn = "Thermodynamics", titleBn = "তাপগতিবিদ্যা", status = "IN_PROGRESS", priority = "HIGH", isRevisionNeeded = true, revisionCount = 1, estimatedMinutes = 110),
@@ -93,7 +88,6 @@ suspend fun populateInitialData(database: StudyHubDatabase) {
         ChapterEntity(subjectId = physicsId, titleEn = "Current Electricity", titleBn = "চল তড়িৎ", status = "NOT_STARTED", priority = "MEDIUM", estimatedMinutes = 90),
         ChapterEntity(subjectId = physicsId, titleEn = "Modern Physics", titleBn = "আধুনিক পদার্থবিজ্ঞান", status = "NOT_STARTED", priority = "MEDIUM", isRevisionNeeded = true, estimatedMinutes = 80),
         ChapterEntity(subjectId = physicsId, titleEn = "Optics", titleBn = "আলোকবিজ্ঞান", status = "NOT_STARTED", priority = "LOW", estimatedMinutes = 75),
-        // Additional completed to make 8 / 12
         ChapterEntity(subjectId = physicsId, titleEn = "Vectors", titleBn = "ভেক্টর", status = "COMPLETED", priority = "HIGH", revisionCount = 2),
         ChapterEntity(subjectId = physicsId, titleEn = "Work, Energy & Power", titleBn = "কাজ, শক্তি ও ক্ষমতা", status = "COMPLETED", priority = "HIGH", revisionCount = 1),
         ChapterEntity(subjectId = physicsId, titleEn = "Gravitation & Gravity", titleBn = "মহাকর্ষ ও অভিকর্ষ", status = "COMPLETED", priority = "MEDIUM", revisionCount = 1),
@@ -102,7 +96,7 @@ suspend fun populateInitialData(database: StudyHubDatabase) {
         ChapterEntity(subjectId = physicsId, titleEn = "Waves & Sound", titleBn = "তরঙ্গ ও শব্দ", status = "COMPLETED", priority = "MEDIUM", revisionCount = 1)
     ))
 
-    // Chemistry: 5 / 10 chapters completed (50%)
+    // Chemistry
     chapterDao.insertChapters(listOf(
         ChapterEntity(subjectId = chemistryId, titleEn = "Qualitative Chemistry", titleBn = "গুণগত রসায়ন", status = "COMPLETED", priority = "MEDIUM", revisionCount = 1),
         ChapterEntity(subjectId = chemistryId, titleEn = "Periodic Table & Bonding", titleBn = "পর্যায়বৃত্ত ধর্ম ও বন্ধন", status = "COMPLETED", priority = "HIGH", revisionCount = 2),
@@ -116,7 +110,7 @@ suspend fun populateInitialData(database: StudyHubDatabase) {
         ChapterEntity(subjectId = chemistryId, titleEn = "Acid Base & Buffer", titleBn = "অম্ল-ক্ষারক সাম্যাবস্থা", status = "NOT_STARTED", priority = "MEDIUM")
     ))
 
-    // Mathematics: 6 / 12 chapters completed (50%)
+    // Mathematics
     chapterDao.insertChapters(listOf(
         ChapterEntity(subjectId = mathId, titleEn = "Matrices & Determinants", titleBn = "ম্যাট্রিক্স ও নির্ণায়ক", status = "COMPLETED", priority = "LOW", revisionCount = 1),
         ChapterEntity(subjectId = mathId, titleEn = "Straight Lines", titleBn = "সরলরেখা", status = "COMPLETED", priority = "HIGH", revisionCount = 2),
@@ -132,7 +126,7 @@ suspend fun populateInitialData(database: StudyHubDatabase) {
         ChapterEntity(subjectId = mathId, titleEn = "Statics & Dynamics", titleBn = "স্থিতিবিদ্যা ও গতিবিদ্যা", status = "NOT_STARTED", priority = "HIGH")
     ))
 
-    // English: 2 / 6 chapters completed (33%)
+    // English
     chapterDao.insertChapters(listOf(
         ChapterEntity(subjectId = englishId, titleEn = "Parts of Speech & Verbs", titleBn = "পদ প্রকরণ ও ক্রিয়া", status = "COMPLETED", priority = "HIGH", revisionCount = 2),
         ChapterEntity(subjectId = englishId, titleEn = "Prepositions & Idioms", titleBn = "প্রিপজিশন ও বাগধারা", status = "COMPLETED", priority = "HIGH", revisionCount = 1),
@@ -142,7 +136,7 @@ suspend fun populateInitialData(database: StudyHubDatabase) {
         ChapterEntity(subjectId = englishId, titleEn = "Sentence Correction", titleBn = "বাক্য শুদ্ধিকরণ", status = "NOT_STARTED", priority = "MEDIUM")
     ))
 
-    // Biology: 0 / 8 chapters completed (0%)
+    // Biology
     chapterDao.insertChapters(listOf(
         ChapterEntity(subjectId = biologyId, titleEn = "Cell & Structure", titleBn = "কোষ ও এর গঠন", status = "NOT_STARTED", priority = "HIGH"),
         ChapterEntity(subjectId = biologyId, titleEn = "Cell Division", titleBn = "কোষ বিভাজন", status = "NOT_STARTED", priority = "HIGH"),
@@ -154,11 +148,7 @@ suspend fun populateInitialData(database: StudyHubDatabase) {
         ChapterEntity(subjectId = biologyId, titleEn = "Human Immunity", titleBn = "মানব প্রতিরক্ষা ও ইমিউনিটি", status = "NOT_STARTED", priority = "HIGH")
     ))
 
-    // University Admissions matching exact mockup:
-    // 1. DU Admission Test: University of Dhaka, 12 May 2025, 26 days left (or 18 days for hero card)
-    // 2. BUET Admission: Bangladesh University of Engineering..., 25 May 2025, 39 days left
-    // 3. GST Admission: General, Science and Technology, 10 Jun 2025, 55 days left
-    // 4. Medical Admission: MBBS (Public & Private), 15 Jul 2025, 91 days left
+    // Admission targets
     val now = System.currentTimeMillis()
     val dayMs = 86_400_000L
     admissionDao.insertTargets(listOf(
@@ -166,7 +156,7 @@ suspend fun populateInitialData(database: StudyHubDatabase) {
             universityName = "DU Admission Test",
             unit = "University of Dhaka",
             applicationDeadline = now + (10 * dayMs),
-            examDate = now + (18 * dayMs), // Exactly 18 days left as shown in the hero badge!
+            examDate = now + (18 * dayMs),
             status = "APPLIED",
             websiteUrl = "admission.eis.du.ac.bd",
             notes = "Centres: Curzon Hall, Arts Building. Unit A."
@@ -200,7 +190,25 @@ suspend fun populateInitialData(database: StudyHubDatabase) {
         )
     ))
 
-    // Today's Study Sessions: 2 hours 15 minutes = 8100 seconds
+    // Planner tasks
+    plannerDao.insertTasks(listOf(
+        PlannerTaskEntity(timeSlot = "08:00 - 09:30", subjectTitle = "Physics", topicTitle = "Electrostatics", dateCategory = "TODAY", isCompleted = true, colorHex = "#10B981"),
+        PlannerTaskEntity(timeSlot = "10:00 - 11:00", subjectTitle = "Chemistry", topicTitle = "Organic", dateCategory = "TODAY", isCompleted = false, colorHex = "#2563EB"),
+        PlannerTaskEntity(timeSlot = "01:00 - 02:00", subjectTitle = "English", topicTitle = "Vocabulary", dateCategory = "TODAY", isCompleted = false, colorHex = "#2563EB"),
+        PlannerTaskEntity(timeSlot = "04:00 - 05:30", subjectTitle = "Mathematics", topicTitle = "Calculus", dateCategory = "TODAY", isCompleted = false, colorHex = "#2563EB")
+    ))
+
+    // Revision items
+    revisionDao.insertRevisions(listOf(
+        RevisionItemEntity(title = "Electrostatics", subjectName = "Physics", completedCount = 2, totalCount = 4, isCompleted = false),
+        RevisionItemEntity(title = "Organic Chemistry", subjectName = "Chemistry", completedCount = 0, totalCount = 3, isCompleted = false),
+        RevisionItemEntity(title = "Calculus", subjectName = "Mathematics", completedCount = 1, totalCount = 5, isCompleted = false),
+        RevisionItemEntity(title = "English Grammar", subjectName = "English", completedCount = 0, totalCount = 2, isCompleted = false),
+        RevisionItemEntity(title = "Modern Physics", subjectName = "Physics", completedCount = 0, totalCount = 4, isCompleted = false),
+        RevisionItemEntity(title = "Mechanics", subjectName = "Physics", completedCount = 4, totalCount = 4, isCompleted = true)
+    ))
+
+    // Sessions: 2h 15m today
     val midnightToday = Calendar.getInstance().apply {
         set(Calendar.HOUR_OF_DAY, 0)
         set(Calendar.MINUTE, 0)
@@ -211,34 +219,27 @@ suspend fun populateInitialData(database: StudyHubDatabase) {
     sessionDao.insertSession(
         StudySessionEntity(
             subjectId = physicsId,
-            durationSeconds = 4800, // 1h 20m
+            durationSeconds = 4800,
             timestamp = midnightToday + (10 * 3600 * 1000L),
             sessionType = "POMODORO",
-            notes = "Electrostatics point charge and potential"
+            notes = "Electrostatics problem sets"
         )
     )
     sessionDao.insertSession(
         StudySessionEntity(
             subjectId = chemistryId,
-            durationSeconds = 3300, // 55m -> total 8100s = exactly 2h 15m!
+            durationSeconds = 3300,
             timestamp = midnightToday + (13 * 3600 * 1000L),
             sessionType = "POMODORO",
             notes = "Organic chemistry mechanisms"
         )
     )
 
-    // Past 6 days sessions for weekly analytics (Mon to Sun) totaling 18h 45m
-    val day1 = midnightToday - (1 * dayMs)
-    val day2 = midnightToday - (2 * dayMs)
-    val day3 = midnightToday - (3 * dayMs)
-    val day4 = midnightToday - (4 * dayMs)
-    val day5 = midnightToday - (5 * dayMs)
-    val day6 = midnightToday - (6 * dayMs)
-
-    sessionDao.insertSession(StudySessionEntity(subjectId = mathId, durationSeconds = 10800, timestamp = day1, sessionType = "STOPWATCH", notes = "Calculus problem sets")) // 3h
-    sessionDao.insertSession(StudySessionEntity(subjectId = physicsId, durationSeconds = 9000, timestamp = day2, sessionType = "POMODORO", notes = "Thermodynamics problem bank")) // 2.5h
-    sessionDao.insertSession(StudySessionEntity(subjectId = chemistryId, durationSeconds = 12600, timestamp = day3, sessionType = "POMODORO", notes = "Equilibrium & Qualitative")) // 3.5h
-    sessionDao.insertSession(StudySessionEntity(subjectId = englishId, durationSeconds = 7200, timestamp = day4, sessionType = "POMODORO", notes = "Grammar rules")) // 2h
-    sessionDao.insertSession(StudySessionEntity(subjectId = mathId, durationSeconds = 10800, timestamp = day5, sessionType = "STOPWATCH", notes = "Coordinate geometry")) // 3h
-    sessionDao.insertSession(StudySessionEntity(subjectId = physicsId, durationSeconds = 9000, timestamp = day6, sessionType = "POMODORO", notes = "Mechanics review")) // 2.5h
+    // Past 6 days
+    sessionDao.insertSession(StudySessionEntity(subjectId = mathId, durationSeconds = 10800, timestamp = midnightToday - (1 * dayMs), sessionType = "STOPWATCH"))
+    sessionDao.insertSession(StudySessionEntity(subjectId = physicsId, durationSeconds = 9000, timestamp = midnightToday - (2 * dayMs), sessionType = "POMODORO"))
+    sessionDao.insertSession(StudySessionEntity(subjectId = chemistryId, durationSeconds = 12600, timestamp = midnightToday - (3 * dayMs), sessionType = "POMODORO"))
+    sessionDao.insertSession(StudySessionEntity(subjectId = englishId, durationSeconds = 7200, timestamp = midnightToday - (4 * dayMs), sessionType = "POMODORO"))
+    sessionDao.insertSession(StudySessionEntity(subjectId = mathId, durationSeconds = 10800, timestamp = midnightToday - (5 * dayMs), sessionType = "STOPWATCH"))
+    sessionDao.insertSession(StudySessionEntity(subjectId = physicsId, durationSeconds = 9000, timestamp = midnightToday - (6 * dayMs), sessionType = "POMODORO"))
 }

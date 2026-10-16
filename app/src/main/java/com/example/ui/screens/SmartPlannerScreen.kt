@@ -20,15 +20,28 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.CalendarToday
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Eco
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -38,8 +51,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.data.model.PlannerTaskEntity
 import com.example.ui.MainViewModel
-import com.example.ui.PlannerBlock
 import com.example.ui.components.StudyHubCard
 import com.example.ui.theme.DarkBorder
 import com.example.ui.theme.DarkMidnightSurface
@@ -53,6 +66,10 @@ import com.example.ui.theme.RoyalBlueLight
 import com.example.ui.theme.SlateBorder
 import com.example.ui.theme.SlateMuted
 import com.example.util.AppLanguage
+import com.example.util.AppStrings
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 @Composable
 fun SmartPlannerScreen(
@@ -62,12 +79,26 @@ fun SmartPlannerScreen(
     modifier: Modifier = Modifier
 ) {
     val timeRange by viewModel.plannerTimeRange.collectAsStateWithLifecycle()
-    val blocks by viewModel.plannerBlocks.collectAsStateWithLifecycle()
+    val allTasks by viewModel.plannerTasks.collectAsStateWithLifecycle()
+
+    var showAddTaskDialog by remember { mutableStateOf(false) }
+
+    val filteredTasks = allTasks.filter { it.dateCategory == timeRange }
+    val completedCount = filteredTasks.count { it.isCompleted }
+    val totalCount = filteredTasks.size
 
     val cardBg = if (isDarkTheme) DarkMidnightSurface else Color.White
     val borderCol = if (isDarkTheme) DarkBorder else MaterialTheme.colorScheme.outlineVariant
     val textPrimary = if (isDarkTheme) DarkTextWhite else NavyText
     val textSecondary = if (isDarkTheme) DarkTextMuted else SlateMuted
+
+    val rawSubtitle = when (timeRange) {
+        "TODAY" -> SimpleDateFormat("EEE, dd MMM", Locale.US).format(Date())
+        "TOMORROW" -> SimpleDateFormat("EEE, dd MMM", Locale.US).format(Date(System.currentTimeMillis() + 86400000L))
+        else -> if (lang == AppLanguage.BANGLA) "আগামী ৭ দিন" else "Upcoming 7 Days"
+    }
+    val dateSubtitle = if (lang == AppLanguage.BANGLA && timeRange != "THIS_WEEK")
+        AppStrings.toBengaliDigits(rawSubtitle) else rawSubtitle
 
     LazyColumn(
         modifier = modifier
@@ -76,34 +107,51 @@ fun SmartPlannerScreen(
         contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 16.dp, bottom = 96.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // Top Header: Blue square with calendar icon + "Smart Planner"
+        // Top Header
         item {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(
-                    modifier = Modifier
-                        .size(32.dp)
-                        .background(RoyalBlueLight, RoundedCornerShape(8.dp)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.CalendarToday,
-                        contentDescription = null,
-                        tint = RoyalBlue,
-                        modifier = Modifier.size(18.dp)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(36.dp)
+                            .background(
+                                if (isDarkTheme) RoyalBlue.copy(alpha = 0.2f) else RoyalBlueLight,
+                                RoundedCornerShape(10.dp)
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.CalendarToday,
+                            contentDescription = null,
+                            tint = RoyalBlue,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.width(10.dp))
+
+                    Text(
+                        text = AppStrings.plannerTitle(lang),
+                        style = MaterialTheme.typography.headlineMedium.copy(
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 22.sp,
+                            letterSpacing = (-0.5).sp
+                        ),
+                        color = textPrimary
                     )
                 }
 
-                Spacer(modifier = Modifier.width(10.dp))
-
-                Text(
-                    text = "Smart Planner",
-                    style = MaterialTheme.typography.headlineMedium.copy(
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 22.sp,
-                        letterSpacing = (-0.5).sp
-                    ),
-                    color = textPrimary
-                )
+                IconButton(onClick = { showAddTaskDialog = true }) {
+                    Icon(
+                        imageVector = Icons.Default.Add,
+                        contentDescription = AppStrings.addTask(lang),
+                        tint = RoyalBlue
+                    )
+                }
             }
         }
 
@@ -114,19 +162,19 @@ fun SmartPlannerScreen(
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 SyllabusTopPill(
-                    label = "Today",
+                    label = AppStrings.tabToday(lang),
                     isSelected = timeRange == "TODAY",
                     isDarkTheme = isDarkTheme,
                     onClick = { viewModel.setPlannerTimeRange("TODAY") }
                 )
                 SyllabusTopPill(
-                    label = "Tomorrow",
+                    label = AppStrings.tabTomorrow(lang),
                     isSelected = timeRange == "TOMORROW",
                     isDarkTheme = isDarkTheme,
                     onClick = { viewModel.setPlannerTimeRange("TOMORROW") }
                 )
                 SyllabusTopPill(
-                    label = "This Week",
+                    label = AppStrings.tabThisWeek(lang),
                     isSelected = timeRange == "THIS_WEEK",
                     isDarkTheme = isDarkTheme,
                     onClick = { viewModel.setPlannerTimeRange("THIS_WEEK") }
@@ -134,100 +182,194 @@ fun SmartPlannerScreen(
             }
         }
 
-        // Date Subtitle
+        // Date Subtitle & Auto-Plan
         item {
-            Text(
-                text = "Wed, 16 Apr",
-                style = MaterialTheme.typography.titleMedium.copy(
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 16.sp
-                ),
-                color = textPrimary
-            )
-        }
-
-        // Scheduled Study Blocks List
-        items(blocks, key = { it.id }) { block ->
-            val accentBorder = if (block.isCompleted) MintGreen else RoyalBlue
-
-            StudyHubCard(
+            Row(
                 modifier = Modifier.fillMaxWidth(),
-                backgroundColor = cardBg,
-                borderColor = borderCol,
-                onClick = { viewModel.togglePlannerBlock(block.id) }
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(
+                Text(
+                    text = dateSubtitle,
+                    style = MaterialTheme.typography.titleMedium.copy(
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 15.sp
+                    ),
+                    color = textPrimary
+                )
+
+                // Quick auto-generate plan button
+                Surface(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 14.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                        .clip(RoundedCornerShape(12.dp))
+                        .clickable { viewModel.generateSmartPlanForCategory(timeRange) },
+                    color = if (isDarkTheme) RoyalBlue.copy(alpha = 0.2f) else RoyalBlueLight
                 ) {
                     Row(
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        // Left vertical colored accent bar
-                        Box(
-                            modifier = Modifier
-                                .size(width = 3.dp, height = 36.dp)
-                                .background(accentBorder, RoundedCornerShape(2.dp))
+                        Icon(
+                            imageVector = Icons.Default.AutoAwesome,
+                            contentDescription = null,
+                            tint = RoyalBlue,
+                            modifier = Modifier.size(14.dp)
                         )
-
-                        Spacer(modifier = Modifier.width(12.dp))
-
-                        Column {
-                            Text(
-                                text = block.timeSlot,
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Medium,
-                                color = textSecondary
-                            )
-                            Spacer(modifier = Modifier.height(3.dp))
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(
-                                    text = block.subjectTitle,
-                                    fontSize = 14.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = textPrimary
-                                )
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text(
-                                    text = "(${block.topicTitle})",
-                                    fontSize = 13.sp,
-                                    color = textSecondary
-                                )
-                            }
-                        }
-                    }
-
-                    // Checkbox Circle
-                    if (block.isCompleted) {
-                        Box(
-                            modifier = Modifier
-                                .size(24.dp)
-                                .background(MintGreen, CircleShape),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Check,
-                                contentDescription = "Completed",
-                                tint = Color.White,
-                                modifier = Modifier.size(14.dp)
-                            )
-                        }
-                    } else {
-                        Box(
-                            modifier = Modifier
-                                .size(24.dp)
-                                .border(1.5.dp, Color(0xFFCBD5E1), CircleShape)
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = if (lang == AppLanguage.BANGLA) "স্বয়ংক্রিয় প্ল্যান" else "Auto-Plan",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = RoyalBlue
                         )
                     }
                 }
             }
         }
 
-        // Motivational Card: "Keep going! You're doing great. 💙"
+        if (filteredTasks.isEmpty()) {
+            item {
+                StudyHubCard(
+                    modifier = Modifier.fillMaxWidth(),
+                    backgroundColor = cardBg,
+                    borderColor = borderCol
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(28.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(48.dp)
+                                .background(RoyalBlueLight, CircleShape),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.CalendarToday,
+                                contentDescription = null,
+                                tint = RoyalBlue,
+                                modifier = Modifier.size(24.dp)
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Text(
+                            text = AppStrings.emptyPlannerTitle(lang),
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 15.sp,
+                            color = textPrimary
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = AppStrings.emptyPlannerDesc(lang),
+                            fontSize = 12.sp,
+                            color = textSecondary,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                        )
+                    }
+                }
+            }
+        } else {
+            // Scheduled Study Blocks List
+            items(filteredTasks, key = { it.id }) { block ->
+                val accentBorder = if (block.isCompleted) MintGreen else RoyalBlue
+
+                StudyHubCard(
+                    modifier = Modifier.fillMaxWidth(),
+                    backgroundColor = cardBg,
+                    borderColor = borderCol,
+                    onClick = { viewModel.togglePlannerTask(block.id, block.isCompleted) }
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 14.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            modifier = Modifier.weight(1f),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(width = 3.dp, height = 36.dp)
+                                    .background(accentBorder, RoundedCornerShape(2.dp))
+                            )
+
+                            Spacer(modifier = Modifier.width(12.dp))
+
+                            Column {
+                                Text(
+                                    text = if (lang == AppLanguage.BANGLA) AppStrings.toBengaliDigits(block.timeSlot) else block.timeSlot,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = textSecondary
+                                )
+                                Spacer(modifier = Modifier.height(3.dp))
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        text = block.subjectTitle,
+                                        fontSize = 14.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = textPrimary
+                                    )
+                                    if (block.topicTitle.isNotBlank()) {
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text(
+                                            text = "(${block.topicTitle})",
+                                            fontSize = 13.sp,
+                                            color = textSecondary
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            if (block.isCompleted) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(26.dp)
+                                        .background(MintGreen, CircleShape),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Check,
+                                        contentDescription = "Completed",
+                                        tint = Color.White,
+                                        modifier = Modifier.size(15.dp)
+                                    )
+                                }
+                            } else {
+                                Box(
+                                    modifier = Modifier
+                                        .size(26.dp)
+                                        .border(1.5.dp, if (isDarkTheme) Color(0xFF475569) else Color(0xFFCBD5E1), CircleShape)
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.width(10.dp))
+
+                            IconButton(
+                                onClick = { viewModel.deletePlannerTask(block.id) },
+                                modifier = Modifier.size(28.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Delete,
+                                    contentDescription = AppStrings.deleteAction(lang),
+                                    tint = textSecondary.copy(alpha = 0.5f),
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Motivational Card: Dynamic feedback
         item {
             StudyHubCard(
                 modifier = Modifier.fillMaxWidth(),
@@ -242,7 +384,7 @@ fun SmartPlannerScreen(
                 ) {
                     Box(
                         modifier = Modifier
-                            .size(36.dp)
+                            .size(38.dp)
                             .background(
                                 if (isDarkTheme) MintGreen.copy(alpha = 0.2f) else MintGreenLight,
                                 CircleShape
@@ -253,7 +395,7 @@ fun SmartPlannerScreen(
                             imageVector = Icons.Default.Eco,
                             contentDescription = null,
                             tint = MintGreen,
-                            modifier = Modifier.size(20.dp)
+                            modifier = Modifier.size(22.dp)
                         )
                     }
 
@@ -261,7 +403,7 @@ fun SmartPlannerScreen(
 
                     Column {
                         Text(
-                            text = "Keep going!",
+                            text = if (lang == AppLanguage.BANGLA) "ধারাবাহিক থাকুন!" else "Keep going!",
                             style = MaterialTheme.typography.bodyMedium.copy(
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 14.sp
@@ -270,7 +412,7 @@ fun SmartPlannerScreen(
                         )
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(
-                            text = "You're doing great. 💙",
+                            text = AppStrings.motivationalPrompt(completedCount, totalCount, lang),
                             fontSize = 12.sp,
                             color = textSecondary
                         )
@@ -278,5 +420,84 @@ fun SmartPlannerScreen(
                 }
             }
         }
+    }
+
+    if (showAddTaskDialog) {
+        var timeSlot by remember { mutableStateOf("09:00 - 10:30") }
+        var subject by remember { mutableStateOf("") }
+        var topic by remember { mutableStateOf("") }
+
+        AlertDialog(
+            onDismissRequest = { showAddTaskDialog = false },
+            containerColor = if (isDarkTheme) DarkMidnightSurface else Color.White,
+            title = {
+                Text(
+                    text = if (lang == AppLanguage.BANGLA) "স্টাডি ব্লক যোগ করুন" else "Add Study Block",
+                    fontWeight = FontWeight.Bold,
+                    color = textPrimary
+                )
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    OutlinedTextField(
+                        value = timeSlot,
+                        onValueChange = { timeSlot = it },
+                        label = { Text(if (lang == AppLanguage.BANGLA) "সময় (যেমনঃ 09:00 - 10:30)" else "Time Slot (e.g. 09:00 - 10:30)") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = RoyalBlue,
+                            unfocusedBorderColor = borderCol,
+                            focusedTextColor = textPrimary,
+                            unfocusedTextColor = textPrimary
+                        )
+                    )
+                    OutlinedTextField(
+                        value = subject,
+                        onValueChange = { subject = it },
+                        label = { Text(if (lang == AppLanguage.BANGLA) "বিষয় (যেমনঃ পদার্থবিজ্ঞান)" else "Subject (e.g. Physics)") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = RoyalBlue,
+                            unfocusedBorderColor = borderCol,
+                            focusedTextColor = textPrimary,
+                            unfocusedTextColor = textPrimary
+                        )
+                    )
+                    OutlinedTextField(
+                        value = topic,
+                        onValueChange = { topic = it },
+                        label = { Text(if (lang == AppLanguage.BANGLA) "টপিক (যেমনঃ আলোর প্রতিফলন)" else "Topic (e.g. Wave Optics)") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = RoyalBlue,
+                            unfocusedBorderColor = borderCol,
+                            focusedTextColor = textPrimary,
+                            unfocusedTextColor = textPrimary
+                        )
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (subject.isNotBlank()) {
+                            viewModel.addPlannerTask(timeSlot, subject, topic, timeRange)
+                            showAddTaskDialog = false
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = RoyalBlue)
+                ) {
+                    Text(AppStrings.addTask(lang), color = Color.White)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showAddTaskDialog = false }) {
+                    Text(AppStrings.cancelAction(lang), color = textSecondary)
+                }
+            }
+        )
     }
 }

@@ -12,12 +12,13 @@ import androidx.lifecycle.viewModelScope
 import com.example.data.local.StudyHubDatabase
 import com.example.data.model.AdmissionTargetEntity
 import com.example.data.model.ChapterEntity
+import com.example.data.model.PlannerTaskEntity
+import com.example.data.model.RevisionItemEntity
 import com.example.data.model.StudySessionEntity
 import com.example.data.model.SubjectEntity
 import com.example.data.repository.StudyHubRepository
-import com.example.domain.SmartPlanTask
-import com.example.domain.SmartPlannerEngine
 import com.example.util.AppLanguage
+import com.example.util.PreferencesManager
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -49,24 +50,6 @@ enum class SyllabusFilter {
     ALL, NOT_STARTED, IN_PROGRESS, COMPLETED, REVISION_NEEDED
 }
 
-data class PlannerBlock(
-    val id: String,
-    val timeSlot: String,
-    val subjectTitle: String,
-    val topicTitle: String,
-    val isCompleted: Boolean = false,
-    val colorHex: String = "#2563EB"
-)
-
-data class RevisionItem(
-    val id: Long,
-    val title: String,
-    val subjectName: String,
-    val completedCount: Int,
-    val totalCount: Int,
-    val isPending: Boolean = true
-)
-
 data class TimerState(
     val isRunning: Boolean = false,
     val isPaused: Boolean = false,
@@ -81,42 +64,61 @@ data class TimerState(
 )
 
 data class StudyStats(
-    val todayStudySeconds: Long = 8100L, // 2h 15m default matching mockup
-    val totalStudySeconds: Long = 67500L, // 18h 45m default matching mockup
-    val streakDays: Int = 4,
-    val completedChapters: Int = 21,
-    val totalChapters: Int = 50,
-    val completionPercent: Float = 42f,
-    val pendingRevisionsCount: Int = 5
+    val todayStudySeconds: Long = 0L,
+    val totalStudySeconds: Long = 0L,
+    val streakDays: Int = 0,
+    val completedChapters: Int = 0,
+    val totalChapters: Int = 0,
+    val completionPercent: Float = 0f,
+    val pendingRevisionsCount: Int = 0
 )
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
 
+    private val prefs = PreferencesManager(application)
     private val database = StudyHubDatabase.getDatabase(application, viewModelScope)
     val repository = StudyHubRepository(database)
 
-    // Dark Theme state
-    private val _isDarkTheme = MutableStateFlow(false)
+    // User Profile
+    private val _userName = MutableStateFlow(prefs.userName)
+    val userName: StateFlow<String> = _userName.asStateFlow()
+
+    fun updateUserName(name: String) {
+        val trimmed = name.trim().ifBlank { "Arafat" }
+        prefs.userName = trimmed
+        _userName.value = trimmed
+    }
+
+    // Persistent Dark Theme state
+    private val _isDarkTheme = MutableStateFlow(prefs.isDarkTheme)
     val isDarkTheme: StateFlow<Boolean> = _isDarkTheme.asStateFlow()
 
     fun toggleDarkTheme() {
-        _isDarkTheme.value = !_isDarkTheme.value
+        val newVal = !_isDarkTheme.value
+        prefs.isDarkTheme = newVal
+        _isDarkTheme.value = newVal
     }
 
-    fun setDarkTheme(enabled: Boolean) {
-        _isDarkTheme.value = enabled
-    }
-
-    // Language
-    private val _currentLanguage = MutableStateFlow(AppLanguage.ENGLISH)
+    // Persistent Language
+    private val _currentLanguage = MutableStateFlow(
+        if (prefs.language == "bn") AppLanguage.BANGLA else AppLanguage.ENGLISH
+    )
     val currentLanguage: StateFlow<AppLanguage> = _currentLanguage.asStateFlow()
 
     fun toggleLanguage() {
-        _currentLanguage.value = if (_currentLanguage.value == AppLanguage.ENGLISH) {
-            AppLanguage.BANGLA
-        } else {
-            AppLanguage.ENGLISH
-        }
+        val next = if (_currentLanguage.value == AppLanguage.ENGLISH) AppLanguage.BANGLA else AppLanguage.ENGLISH
+        prefs.language = next.code
+        _currentLanguage.value = next
+    }
+
+    // Notifications state
+    private val _isNotificationsEnabled = MutableStateFlow(prefs.isNotificationsEnabled)
+    val isNotificationsEnabled: StateFlow<Boolean> = _isNotificationsEnabled.asStateFlow()
+
+    fun toggleNotifications() {
+        val newVal = !_isNotificationsEnabled.value
+        prefs.isNotificationsEnabled = newVal
+        _isNotificationsEnabled.value = newVal
     }
 
     // Navigation
@@ -148,7 +150,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    // Selected Subject for Subject Details screen
+    // Subject Details state
     private val _selectedSubjectId = MutableStateFlow<Long?>(null)
     val selectedSubjectId: StateFlow<Long?> = _selectedSubjectId.asStateFlow()
 
@@ -170,6 +172,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val admissions: StateFlow<List<AdmissionTargetEntity>> = repository.allAdmissions
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    val plannerTasks: StateFlow<List<PlannerTaskEntity>> = repository.allPlannerTasks
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val revisionItems: StateFlow<List<RevisionItemEntity>> = repository.allRevisions
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
     // Syllabus Filter State
     private val _selectedSubjectFilter = MutableStateFlow<Long?>(null)
     val selectedSubjectFilter: StateFlow<Long?> = _selectedSubjectFilter.asStateFlow()
@@ -186,100 +194,127 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     // Smart Planner State
-    private val _plannerTimeRange = MutableStateFlow("TODAY") // "TODAY", "TOMORROW", "THIS_WEEK"
+    private val _plannerTimeRange = MutableStateFlow("TODAY")
     val plannerTimeRange: StateFlow<String> = _plannerTimeRange.asStateFlow()
 
     fun setPlannerTimeRange(range: String) {
         _plannerTimeRange.value = range
     }
 
-    private val _plannerBlocks = MutableStateFlow(
-        listOf(
-            PlannerBlock("pb_1", "08:00 - 09:30", "Physics", "Electrostatics", isCompleted = true, colorHex = "#10B981"),
-            PlannerBlock("pb_2", "10:00 - 11:00", "Chemistry", "Organic", isCompleted = false, colorHex = "#2563EB"),
-            PlannerBlock("pb_3", "01:00 - 02:00", "English", "Vocabulary", isCompleted = false, colorHex = "#2563EB"),
-            PlannerBlock("pb_4", "04:00 - 05:30", "Mathematics", "Calculus", isCompleted = false, colorHex = "#2563EB")
-        )
-    )
-    val plannerBlocks: StateFlow<List<PlannerBlock>> = _plannerBlocks.asStateFlow()
+    fun togglePlannerTask(taskId: Long, currentCompleted: Boolean) {
+        viewModelScope.launch {
+            repository.updatePlannerTaskCompletion(taskId, !currentCompleted)
+        }
+    }
 
-    fun togglePlannerBlock(id: String) {
-        _plannerBlocks.value = _plannerBlocks.value.map {
-            if (it.id == id) it.copy(isCompleted = !it.isCompleted) else it
+    fun addPlannerTask(timeSlot: String, subject: String, topic: String, dateCategory: String) {
+        viewModelScope.launch {
+            repository.insertPlannerTask(
+                PlannerTaskEntity(
+                    timeSlot = timeSlot.ifBlank { "09:00 - 10:30" },
+                    subjectTitle = subject.ifBlank { "General" },
+                    topicTitle = topic.ifBlank { "Study Session" },
+                    dateCategory = dateCategory,
+                    isCompleted = false,
+                    colorHex = "#2563EB"
+                )
+            )
+        }
+    }
+
+    fun deletePlannerTask(taskId: Long) {
+        viewModelScope.launch {
+            repository.deletePlannerTask(taskId)
+        }
+    }
+
+    fun generateSmartPlanForCategory(category: String) {
+        viewModelScope.launch {
+            val allChaps = chapters.value
+            val allSubs = subjects.value.associateBy { it.id }
+
+            // Pick unfinished or revision chapters
+            val candidates = allChaps.filter { it.status != "COMPLETED" || it.isRevisionNeeded }
+                .sortedWith(
+                    compareByDescending<ChapterEntity> { it.priority == "HIGH" }
+                        .thenByDescending { it.isRevisionNeeded }
+                        .thenByDescending { it.status == "IN_PROGRESS" }
+                )
+
+            val timeSlots = listOf("08:00 - 09:30", "10:00 - 11:30", "02:00 - 03:30", "04:30 - 06:00")
+            val newTasks = candidates.take(4).mapIndexed { idx, ch ->
+                val subName = allSubs[ch.subjectId]?.nameEn ?: "Subject"
+                val slot = timeSlots.getOrElse(idx) { "07:00 - 08:30" }
+                val color = if (ch.isRevisionNeeded) "#10B981" else "#2563EB"
+
+                PlannerTaskEntity(
+                    timeSlot = slot,
+                    subjectTitle = subName,
+                    topicTitle = ch.titleEn,
+                    dateCategory = category,
+                    isCompleted = false,
+                    colorHex = color,
+                    subjectId = ch.subjectId,
+                    chapterId = ch.id
+                )
+            }
+
+            if (newTasks.isNotEmpty()) {
+                repository.insertPlannerTasks(newTasks)
+            }
         }
     }
 
     // Revision Tracker State
-    private val _revisionTab = MutableStateFlow("PENDING") // "PENDING", "COMPLETED"
+    private val _revisionTab = MutableStateFlow("PENDING")
     val revisionTab: StateFlow<String> = _revisionTab.asStateFlow()
 
     fun setRevisionTab(tab: String) {
         _revisionTab.value = tab
     }
 
-    private val _revisionItems = MutableStateFlow(
-        listOf(
-            RevisionItem(1L, "Electrostatics", "Physics", 2, 4, isPending = true),
-            RevisionItem(2L, "Organic Chemistry", "Chemistry", 0, 3, isPending = true),
-            RevisionItem(3L, "Calculus", "Mathematics", 1, 5, isPending = true),
-            RevisionItem(4L, "English Grammar", "English", 0, 2, isPending = true),
-            RevisionItem(5L, "Modern Physics", "Physics", 0, 4, isPending = true),
-            RevisionItem(6L, "Mechanics", "Physics", 4, 4, isPending = false),
-            RevisionItem(7L, "Straight Lines", "Mathematics", 5, 5, isPending = false)
-        )
-    )
-    val revisionItems: StateFlow<List<RevisionItem>> = _revisionItems.asStateFlow()
+    fun addRevisionItem(title: String, subjectName: String, totalCount: Int) {
+        viewModelScope.launch {
+            repository.insertRevision(
+                RevisionItemEntity(
+                    title = title.ifBlank { "New Topic" },
+                    subjectName = subjectName.ifBlank { "General" },
+                    completedCount = 0,
+                    totalCount = totalCount.coerceAtLeast(1),
+                    isCompleted = false
+                )
+            )
+        }
+    }
 
-    fun incrementRevision(id: Long) {
-        _revisionItems.value = _revisionItems.value.map {
-            if (it.id == id) {
-                val nextCount = (it.completedCount + 1).coerceAtMost(it.totalCount)
-                it.copy(completedCount = nextCount, isPending = nextCount < it.totalCount)
-            } else it
+    fun incrementRevision(id: Long, currentCompleted: Int, total: Int) {
+        viewModelScope.launch {
+            val nextCompleted = currentCompleted + 1
+            val completed = nextCompleted >= total
+            repository.updateRevisionProgress(id, nextCompleted, completed)
+        }
+    }
+
+    fun deleteRevision(id: Long) {
+        viewModelScope.launch {
+            repository.deleteRevision(id)
         }
     }
 
     // Analytics Range
-    private val _analyticsRange = MutableStateFlow("7_DAYS") // "7_DAYS", "30_DAYS", "3_MONTHS"
+    private val _analyticsRange = MutableStateFlow("7_DAYS")
     val analyticsRange: StateFlow<String> = _analyticsRange.asStateFlow()
 
     fun setAnalyticsRange(range: String) {
         _analyticsRange.value = range
     }
 
-    // Completed Smart Plan Task IDs for today
-    private val _completedPlanTasks = MutableStateFlow<Set<String>>(emptySet())
-    val completedPlanTasks: StateFlow<Set<String>> = _completedPlanTasks.asStateFlow()
-
-    fun togglePlanTask(taskId: String) {
-        val current = _completedPlanTasks.value
-        _completedPlanTasks.value = if (current.contains(taskId)) {
-            current - taskId
-        } else {
-            current + taskId
-        }
-    }
-
-    // Smart Planner generated tasks
-    val smartPlanTasks: StateFlow<List<SmartPlanTask>> = combine(
-        subjects,
-        chapters,
-        admissions,
-        completedPlanTasks
-    ) { subs, chaps, adms, completed ->
-        SmartPlannerEngine.generateDailyPlan(
-            subjects = subs,
-            chapters = chaps,
-            admissions = adms,
-            completedTaskIds = completed
-        )
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-
-    // Overall Study Stats
+    // Dynamically Calculated Study Stats from Source of Truth Tables
     val studyStats: StateFlow<StudyStats> = combine(
         chapters,
-        sessions
-    ) { chaps, sess ->
+        sessions,
+        revisionItems
+    ) { chaps, sess, revs ->
         val midnightToday = Calendar.getInstance().apply {
             set(Calendar.HOUR_OF_DAY, 0)
             set(Calendar.MINUTE, 0)
@@ -289,20 +324,25 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
         val todaySeconds = sess.filter { it.timestamp >= midnightToday }
             .sumOf { it.durationSeconds }
-            .coerceAtLeast(8100L) // 2h 15m default to match mockup!
 
         val totalSeconds = sess.sumOf { it.durationSeconds }
-            .coerceAtLeast(67500L) // 18h 45m to match mockup!
 
-        val completedCount = chaps.count { it.status == "COMPLETED" }.coerceAtLeast(21)
-        val totalCount = chaps.size.coerceAtLeast(50)
-        val percent = if (totalCount > 0) (completedCount.toFloat() / totalCount.toFloat()) * 100f else 42f
-        val revisionCount = chaps.count { it.isRevisionNeeded }.coerceAtLeast(5)
+        val completedCount = chaps.count { it.status == "COMPLETED" }
+        val totalCount = chaps.size
+        val percent = if (totalCount > 0) (completedCount.toFloat() / totalCount.toFloat()) * 100f else 0f
+        val revisionCount = chaps.count { it.isRevisionNeeded } + revs.count { !it.isCompleted }
+
+        // Streak calculation from distinct days with sessions
+        val dayBuckets = sess.map {
+            val cal = Calendar.getInstance().apply { timeInMillis = it.timestamp }
+            "${cal.get(Calendar.YEAR)}_${cal.get(Calendar.DAY_OF_YEAR)}"
+        }.toSet()
+        val calculatedStreak = dayBuckets.size
 
         StudyStats(
             todayStudySeconds = todaySeconds,
             totalStudySeconds = totalSeconds,
-            streakDays = 4,
+            streakDays = calculatedStreak,
             completedChapters = completedCount,
             totalChapters = totalCount,
             completionPercent = percent,
@@ -310,7 +350,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), StudyStats())
 
-    // Focus Timer State (Default 45:00 matching mockup!)
+    // Robust Focus Timer with Timestamp-Based Tracking & Recovery
     private val _timerState = MutableStateFlow(
         TimerState(
             targetSeconds = 45 * 60L,
@@ -322,6 +362,48 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val timerState: StateFlow<TimerState> = _timerState.asStateFlow()
 
     private var timerJob: Job? = null
+    private var timerStartEpochMs: Long = 0L
+    private var elapsedBeforePauseSeconds: Long = 0L
+
+    init {
+        restoreTimerIfRunning()
+    }
+
+    private fun restoreTimerIfRunning() {
+        if (prefs.getTimerRunning()) {
+            val isPaused = prefs.getTimerPaused()
+            val startMs = prefs.getTimerStartMs()
+            val targetSecs = prefs.getTimerTargetSecs()
+            val elapsedPaused = prefs.getTimerElapsedBeforePause()
+            val subjectId = prefs.getTimerSubjectId()
+            val chapterId = prefs.getTimerChapterId()
+
+            val totalElapsed = if (isPaused) {
+                elapsedPaused
+            } else {
+                elapsedPaused + ((System.currentTimeMillis() - startMs) / 1000L).coerceAtLeast(0L)
+            }
+
+            val remaining = (targetSecs - totalElapsed).coerceAtLeast(0L)
+
+            _timerState.value = TimerState(
+                isRunning = true,
+                isPaused = isPaused,
+                targetSeconds = targetSecs,
+                currentSeconds = remaining,
+                selectedSubjectId = subjectId,
+                selectedChapterId = chapterId
+            )
+
+            if (!isPaused && remaining > 0) {
+                elapsedBeforePauseSeconds = elapsedPaused
+                timerStartEpochMs = startMs
+                launchTimerTicker()
+            } else if (remaining <= 0) {
+                finishSession()
+            }
+        }
+    }
 
     fun selectTimerSubject(subjectId: Long?) {
         _timerState.value = _timerState.value.copy(
@@ -334,18 +416,49 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _timerState.value = _timerState.value.copy(selectedChapterId = chapterId)
     }
 
+    fun setTimerDuration(seconds: Long) {
+        if (_timerState.value.isRunning && !_timerState.value.isPaused) return
+        _timerState.value = _timerState.value.copy(
+            targetSeconds = seconds,
+            currentSeconds = seconds
+        )
+    }
+
     fun startTimer() {
         if (_timerState.value.isRunning && !_timerState.value.isPaused) return
+
+        val now = System.currentTimeMillis()
+        timerStartEpochMs = now
+
         _timerState.value = _timerState.value.copy(isRunning = true, isPaused = false)
 
+        prefs.saveTimerState(
+            isRunning = true,
+            isPaused = false,
+            startMs = timerStartEpochMs,
+            targetSecs = _timerState.value.targetSeconds,
+            elapsedBeforePause = elapsedBeforePauseSeconds,
+            subjectId = _timerState.value.selectedSubjectId,
+            chapterId = _timerState.value.selectedChapterId
+        )
+
+        launchTimerTicker()
+    }
+
+    private fun launchTimerTicker() {
         timerJob?.cancel()
         timerJob = viewModelScope.launch {
             while (_timerState.value.isRunning && !_timerState.value.isPaused) {
                 delay(1000L)
-                val current = _timerState.value
-                if (current.currentSeconds > 0) {
-                    _timerState.value = current.copy(currentSeconds = current.currentSeconds - 1)
-                } else {
+                val now = System.currentTimeMillis()
+                val currentRunningElapsed = (now - timerStartEpochMs) / 1000L
+                val totalElapsed = elapsedBeforePauseSeconds + currentRunningElapsed
+                val target = _timerState.value.targetSeconds
+                val remaining = (target - totalElapsed).coerceAtLeast(0L)
+
+                _timerState.value = _timerState.value.copy(currentSeconds = remaining)
+
+                if (remaining <= 0L) {
                     vibrateDevice()
                     finishSession()
                     break
@@ -356,11 +469,29 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun pauseTimer() {
         timerJob?.cancel()
+        val now = System.currentTimeMillis()
+        val currentRunningElapsed = (now - timerStartEpochMs) / 1000L
+        elapsedBeforePauseSeconds += currentRunningElapsed
+
         _timerState.value = _timerState.value.copy(isPaused = true)
+
+        prefs.saveTimerState(
+            isRunning = true,
+            isPaused = true,
+            startMs = 0L,
+            targetSecs = _timerState.value.targetSeconds,
+            elapsedBeforePause = elapsedBeforePauseSeconds,
+            subjectId = _timerState.value.selectedSubjectId,
+            chapterId = _timerState.value.selectedChapterId
+        )
     }
 
     fun resetTimer() {
         timerJob?.cancel()
+        prefs.clearTimerState()
+        elapsedBeforePauseSeconds = 0L
+        timerStartEpochMs = 0L
+
         _timerState.value = _timerState.value.copy(
             isRunning = false,
             isPaused = false,
@@ -371,18 +502,32 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun finishSession() {
         timerJob?.cancel()
         val current = _timerState.value
-        val durationStudied = (current.targetSeconds - current.currentSeconds).coerceAtLeast(0L)
+        val now = System.currentTimeMillis()
+        val currentRunningElapsed = if (current.isRunning && !current.isPaused) {
+            (now - timerStartEpochMs) / 1000L
+        } else 0L
 
-        if (durationStudied >= 10L) {
+        val durationStudied = (elapsedBeforePauseSeconds + currentRunningElapsed)
+            .coerceIn(0L, current.targetSeconds)
+
+        prefs.clearTimerState()
+        elapsedBeforePauseSeconds = 0L
+        timerStartEpochMs = 0L
+
+        // Record session if > 5 seconds
+        if (durationStudied >= 5L) {
             viewModelScope.launch {
+                val subjectName = subjects.value.find { it.id == current.selectedSubjectId }?.nameEn ?: "General Focus"
+                val chapterName = chapters.value.find { it.id == current.selectedChapterId }?.titleEn ?: "Study Session"
+
                 repository.logSession(
                     StudySessionEntity(
                         subjectId = current.selectedSubjectId,
                         chapterId = current.selectedChapterId,
                         durationSeconds = durationStudied,
-                        timestamp = System.currentTimeMillis(),
+                        timestamp = now,
                         sessionType = "POMODORO",
-                        notes = "Physics Electrostatics study session"
+                        notes = "$subjectName: $chapterName"
                     )
                 )
             }
@@ -415,6 +560,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         } catch (_: Exception) {}
     }
 
+    // Chapter Actions
     fun cycleChapterStatus(chapter: ChapterEntity) {
         viewModelScope.launch {
             repository.cycleChapterStatus(chapter)
@@ -454,6 +600,27 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun updateChapter(chapter: ChapterEntity) {
+        viewModelScope.launch {
+            repository.updateChapter(chapter)
+        }
+    }
+
+    fun updateChapterStatus(chapterId: Long, newStatus: String) {
+        viewModelScope.launch {
+            val chapter = _chapters.value.find { it.id == chapterId } ?: return@launch
+            repository.updateChapter(chapter.copy(status = newStatus))
+        }
+    }
+
+    fun toggleChapterRevision(chapterId: Long, isNeeded: Boolean) {
+        viewModelScope.launch {
+            val chapter = _chapters.value.find { it.id == chapterId } ?: return@launch
+            repository.updateChapter(chapter.copy(isRevisionNeeded = isNeeded))
+        }
+    }
+
+    // Subject Actions
     fun addSubject(nameEn: String, nameBn: String, colorHex: String) {
         viewModelScope.launch {
             repository.insertSubject(
@@ -467,6 +634,19 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun updateSubject(subject: SubjectEntity) {
+        viewModelScope.launch {
+            repository.updateSubject(subject)
+        }
+    }
+
+    fun deleteSubject(subjectId: Long) {
+        viewModelScope.launch {
+            repository.deleteSubject(subjectId)
+        }
+    }
+
+    // Admission Actions
     fun cycleAdmissionStatus(target: AdmissionTargetEntity) {
         viewModelScope.launch {
             repository.cycleAdmissionStatus(target)
@@ -496,9 +676,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun resetData() {
+    // Data Management
+    fun clearAllData() {
         viewModelScope.launch {
-            repository.resetToSampleData()
+            repository.clearAllData()
+            prefs.clearTimerState()
+            resetTimer()
+        }
+    }
+
+    fun loadSampleDemoData() {
+        viewModelScope.launch {
+            repository.loadDemoData()
         }
     }
 }

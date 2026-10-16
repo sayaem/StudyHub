@@ -19,6 +19,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -47,6 +49,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.data.model.ChapterEntity
 import com.example.data.model.SubjectEntity
 import com.example.ui.MainViewModel
@@ -54,7 +57,6 @@ import com.example.ui.TimerState
 import com.example.ui.components.StudyHubCard
 import com.example.ui.theme.DarkBorder
 import com.example.ui.theme.DarkMidnightBg
-import com.example.ui.theme.DarkMidnightCard
 import com.example.ui.theme.DarkMidnightSurface
 import com.example.ui.theme.DarkTextMuted
 import com.example.ui.theme.DarkTextWhite
@@ -72,15 +74,26 @@ fun FocusTimerScreen(
     onBack: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
-    // Screen 4 is strictly styled in this immersive midnight dark navy aesthetic
+    val stats by viewModel.studyStats.collectAsStateWithLifecycle()
+
     val bg = DarkMidnightBg
     val cardBg = DarkMidnightSurface
     val textPrimary = DarkTextWhite
     val textSecondary = DarkTextMuted
 
     val selectedSubject = subjects.find { it.id == timerState.selectedSubjectId } ?: subjects.firstOrNull()
-    val subjectTitle = selectedSubject?.nameEn ?: "Physics"
-    val chapterTitle = "Electrostatics"
+    val relevantChapters = chapters.filter { it.subjectId == (selectedSubject?.id ?: 0L) }
+    val selectedChapter = relevantChapters.find { it.id == timerState.selectedChapterId } ?: relevantChapters.firstOrNull()
+
+    val subjectTitle = if (lang == AppLanguage.BANGLA && selectedSubject?.nameBn?.isNotBlank() == true)
+        selectedSubject.nameBn
+    else
+        selectedSubject?.nameEn ?: (if (lang == AppLanguage.BANGLA) "সাধারণ অধ্যয়ন" else "General Focus")
+
+    val chapterTitle = if (lang == AppLanguage.BANGLA && selectedChapter?.titleBn?.isNotBlank() == true)
+        selectedChapter.titleBn
+    else
+        selectedChapter?.titleEn ?: (if (lang == AppLanguage.BANGLA) "স্টাডি সেশন" else "Study Session")
 
     LazyColumn(
         modifier = modifier
@@ -111,7 +124,7 @@ fun FocusTimerScreen(
                 }
 
                 Text(
-                    text = "Study Timer",
+                    text = AppStrings.timerFocus(lang),
                     style = MaterialTheme.typography.titleLarge.copy(
                         fontWeight = FontWeight.Bold,
                         fontSize = 18.sp
@@ -129,11 +142,11 @@ fun FocusTimerScreen(
             }
         }
 
-        // Tagged Subject Section
+        // Tagged Subject Section (Picker if multiple subjects)
         item {
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.padding(top = 8.dp)
+                modifier = Modifier.padding(top = 4.dp)
             ) {
                 Box(
                     modifier = Modifier
@@ -149,7 +162,7 @@ fun FocusTimerScreen(
                     )
                 }
 
-                Spacer(modifier = Modifier.height(10.dp))
+                Spacer(modifier = Modifier.height(8.dp))
 
                 Text(
                     text = subjectTitle,
@@ -167,12 +180,97 @@ fun FocusTimerScreen(
                     fontSize = 13.sp,
                     color = RoyalBlue.copy(alpha = 0.9f)
                 )
+
+                if (!timerState.isRunning) {
+                    // Subject Selector Chips
+                    if (subjects.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            items(subjects, key = { it.id }) { s ->
+                                val isSel = s.id == selectedSubject?.id
+                                val sLabel = if (lang == AppLanguage.BANGLA && s.nameBn.isNotBlank()) s.nameBn else s.nameEn
+                                Surface(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .clickable { viewModel.selectTimerSubject(s.id) },
+                                    color = if (isSel) RoyalBlue else DarkMidnightSurface,
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, if (isSel) RoyalBlue else DarkBorder)
+                                ) {
+                                    Text(
+                                        text = sLabel,
+                                        fontSize = 11.sp,
+                                        fontWeight = if (isSel) FontWeight.Bold else FontWeight.Medium,
+                                        color = if (isSel) Color.White else textSecondary,
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // Chapter Selector Chips
+                    if (relevantChapters.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(6.dp))
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            items(relevantChapters, key = { it.id }) { ch ->
+                                val isSel = ch.id == selectedChapter?.id
+                                val cLabel = if (lang == AppLanguage.BANGLA && ch.titleBn.isNotBlank()) ch.titleBn else ch.titleEn
+                                Surface(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .clickable { viewModel.selectTimerChapter(ch.id) },
+                                    color = if (isSel) RoyalBlue.copy(alpha = 0.25f) else Color.Transparent,
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, if (isSel) RoyalBlue else DarkBorder.copy(alpha = 0.5f))
+                                ) {
+                                    Text(
+                                        text = cLabel,
+                                        fontSize = 10.sp,
+                                        fontWeight = if (isSel) FontWeight.Bold else FontWeight.Normal,
+                                        color = if (isSel) Color.White else textSecondary,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // Preset Duration Selector (25m, 45m, 60m, 90m)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        listOf(
+                            25 * 60L to AppStrings.timerDurationPreset(25, lang),
+                            45 * 60L to AppStrings.timerDurationPreset(45, lang),
+                            60 * 60L to AppStrings.timerDurationPreset(60, lang),
+                            90 * 60L to AppStrings.timerDurationPreset(90, lang)
+                        ).forEach { (secs, label) ->
+                            val isSel = timerState.targetSeconds == secs
+                            Surface(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .clickable { viewModel.setTimerDuration(secs) },
+                                color = if (isSel) RoyalBlue else DarkMidnightSurface,
+                                border = androidx.compose.foundation.BorderStroke(1.dp, if (isSel) RoyalBlue else DarkBorder)
+                            ) {
+                                Text(
+                                    text = label,
+                                    fontSize = 11.sp,
+                                    fontWeight = if (isSel) FontWeight.Bold else FontWeight.Medium,
+                                    color = if (isSel) Color.White else textSecondary,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                )
+                            }
+                        }
+                    }
+                }
             }
         }
 
-        // Huge Circular Timer Dial
+        // Circular Timer Dial
         item {
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(4.dp))
 
             val progress = (timerState.currentSeconds.toFloat() / timerState.targetSeconds.toFloat()).coerceIn(0f, 1f)
             val animatedProgress by animateFloatAsState(
@@ -189,13 +287,11 @@ fun FocusTimerScreen(
             ) {
                 Canvas(modifier = Modifier.fillMaxSize()) {
                     val stroke = Stroke(width = 10.dp.toPx(), cap = StrokeCap.Round)
-                    // Dark background track
                     drawCircle(
                         color = Color(0xFF1E2C46).copy(alpha = 0.6f),
                         radius = (size.minDimension - 12.dp.toPx()) / 2,
                         style = stroke
                     )
-                    // Glowing royal blue arc
                     drawArc(
                         color = RoyalBlue,
                         startAngle = -90f,
@@ -209,9 +305,10 @@ fun FocusTimerScreen(
                     val minutes = timerState.currentSeconds / 60
                     val seconds = timerState.currentSeconds % 60
                     val timeStr = "%02d:%02d".format(minutes, seconds)
+                    val displayTime = if (lang == AppLanguage.BANGLA) AppStrings.toBengaliDigits(timeStr) else timeStr
 
                     Text(
-                        text = timeStr,
+                        text = displayTime,
                         style = MaterialTheme.typography.displayMedium.copy(
                             fontWeight = FontWeight.Bold,
                             fontSize = 44.sp,
@@ -223,14 +320,14 @@ fun FocusTimerScreen(
                     Spacer(modifier = Modifier.height(2.dp))
 
                     Text(
-                        text = "Study Time",
+                        text = if (lang == AppLanguage.BANGLA) "অধ্যয়ন সময়" else "Study Time",
                         fontSize = 13.sp,
                         color = Color(0xFF93C5FD)
                     )
                 }
             }
 
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(8.dp))
         }
 
         // Timer Control Buttons Row: Restart | Play/Pause | Stop
@@ -260,14 +357,14 @@ fun FocusTimerScreen(
                     ) {
                         Icon(
                             imageVector = Icons.Default.Refresh,
-                            contentDescription = "Restart",
+                            contentDescription = AppStrings.restartTimer(lang),
                             tint = textSecondary,
                             modifier = Modifier.size(24.dp)
                         )
                     }
                     Spacer(modifier = Modifier.height(6.dp))
                     Text(
-                        text = "Restart",
+                        text = AppStrings.restartTimer(lang),
                         fontSize = 11.sp,
                         color = textSecondary
                     )
@@ -289,7 +386,7 @@ fun FocusTimerScreen(
                 ) {
                     Icon(
                         imageVector = if (isRunning) Icons.Default.Pause else Icons.Default.PlayArrow,
-                        contentDescription = if (isRunning) "Pause" else "Play",
+                        contentDescription = if (isRunning) AppStrings.pauseTimer(lang) else AppStrings.startTimer(lang),
                         tint = Color.White,
                         modifier = Modifier.size(34.dp)
                     )
@@ -315,14 +412,14 @@ fun FocusTimerScreen(
                     ) {
                         Icon(
                             imageVector = Icons.Default.Stop,
-                            contentDescription = "Stop",
+                            contentDescription = AppStrings.stopTimer(lang),
                             tint = textSecondary,
                             modifier = Modifier.size(24.dp)
                         )
                     }
                     Spacer(modifier = Modifier.height(6.dp))
                     Text(
-                        text = "Stop",
+                        text = AppStrings.stopTimer(lang),
                         fontSize = 11.sp,
                         color = textSecondary
                     )
@@ -330,14 +427,19 @@ fun FocusTimerScreen(
             }
         }
 
-        // "Session 1 of 4" with 4 segment progress pill bar
+        // "Session 1 of 4"
         item {
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 modifier = Modifier.padding(vertical = 4.dp)
             ) {
+                val sessText = if (lang == AppLanguage.BANGLA)
+                    "সেশন ${AppStrings.formatNumber(timerState.currentSession, lang)} / ${AppStrings.formatNumber(timerState.totalSessions, lang)}"
+                else
+                    "Session ${timerState.currentSession} of ${timerState.totalSessions}"
+
                 Text(
-                    text = "Session ${timerState.currentSession} of ${timerState.totalSessions}",
+                    text = sessText,
                     fontSize = 12.sp,
                     color = textSecondary
                 )
@@ -361,8 +463,11 @@ fun FocusTimerScreen(
             }
         }
 
-        // Bottom Card: "Today's Progress"
+        // Bottom Card: "Today's Progress" (Real live session data)
         item {
+            val formattedToday = AppStrings.formatDuration(stats.todayStudySeconds, lang)
+            val todayProgress = (stats.todayStudySeconds.toFloat() / 14400f).coerceIn(0f, 1f)
+
             StudyHubCard(
                 modifier = Modifier.fillMaxWidth(),
                 backgroundColor = cardBg,
@@ -370,7 +475,7 @@ fun FocusTimerScreen(
             ) {
                 Column(modifier = Modifier.padding(18.dp)) {
                     Text(
-                        text = "Today's Progress",
+                        text = AppStrings.sessionProgress(lang),
                         fontSize = 12.sp,
                         color = textSecondary
                     )
@@ -378,7 +483,7 @@ fun FocusTimerScreen(
                     Spacer(modifier = Modifier.height(6.dp))
 
                     Text(
-                        text = "2h 15m / 4h",
+                        text = if (lang == AppLanguage.BANGLA) "$formattedToday / ৪ ঘণ্টা" else "$formattedToday / 4h",
                         style = MaterialTheme.typography.titleMedium.copy(
                             fontWeight = FontWeight.Bold,
                             fontSize = 16.sp
@@ -389,7 +494,7 @@ fun FocusTimerScreen(
                     Spacer(modifier = Modifier.height(10.dp))
 
                     LinearProgressIndicator(
-                        progress = { (8100f / 14400f).coerceIn(0f, 1f) },
+                        progress = { todayProgress },
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(6.dp)
