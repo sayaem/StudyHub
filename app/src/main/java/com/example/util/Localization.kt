@@ -204,6 +204,7 @@ object AppStrings {
         return if (lang == AppLanguage.BANGLA) "$num বার রিভিশন" else "$num revs"
     }
     fun markRevised(lang: AppLanguage) = if (lang == AppLanguage.BANGLA) "রিভাইসড মার্ক করুন" else "Mark Revised"
+    fun needsRevision(lang: AppLanguage) = if (lang == AppLanguage.BANGLA) "রিভিশন প্রয়োজন" else "Needs Revision"
 
     // Focus Timer
     fun timerFocus(lang: AppLanguage) = if (lang == AppLanguage.BANGLA) "ফোকাস টাইমার" else "Study Focus Timer"
@@ -280,7 +281,7 @@ object AppStrings {
     fun appVersionLabel(lang: AppLanguage) = if (lang == AppLanguage.BANGLA) "অ্যাপ ভার্সন" else "App Version"
     fun helpAbout(lang: AppLanguage) = if (lang == AppLanguage.BANGLA) "সহায়তা ও নির্দেশিকা" else "Help & User Guide"
     fun helpContent(lang: AppLanguage) = if (lang == AppLanguage.BANGLA)
-        "StudyHub হলো বিশ্ববিদ্যালয় ভর্তি পরীক্ষার্থীদের জন্য একটি পূর্ণাঙ্গ প্রস্তুতি ও ট্র্যাকিং অ্যাপ।\n\n• সিলেবাস: বিষয় ও অধ্যায়ের প্রস্তুতি ট্র্যাক করুন।\n• ফোকাস টাইমার: স্টাডি সেশন রেকর্ড করুন।\n• স্মার্ট প্ল্যানার: অগ্রাধিকারভিত্তিক পড়ার তালিকা তৈরি করুন।\n• ভর্তি ক্যালেন্ডার: আবেদন ও পরীক্ষার তারিখ সংরক্ষণ করুন।"
+        "StudyHub হলো বিশ্ববিদ্যালয় ভর্তি পরীক্ষার্থীদের জন্য একটি পূর্ণাঙ্গ প্রস্তুতি ও ট্র্যাকিং অ্যাপ。\n\n• সিলেবাস: বিষয় ও অধ্যায়ের প্রস্তুতি ট্র্যাক করুন।\n• ফোকাস টাইমার: স্টাডি সেশন রেকর্ড করুন।\n• স্মার্ট প্ল্যানার: অগ্রাধিকারভিত্তিক পড়ার তালিকা তৈরি করুন।\n• ভর্তি ক্যালেন্ডার: আবেদন ও পরীক্ষার তারিখ সংরক্ষণ করুন।"
     else
         "StudyHub is a comprehensive prep companion for university admission candidates.\n\n• Syllabus: Track subjects, chapters & completion status.\n• Focus Timer: Record real study sessions with pause/resume.\n• Smart Planner: Prioritize tasks and schedule revisions.\n• Admission Calendar: Track application deadlines & exam dates."
 }

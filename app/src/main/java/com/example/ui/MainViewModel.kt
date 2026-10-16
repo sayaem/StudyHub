@@ -608,14 +608,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun updateChapterStatus(chapterId: Long, newStatus: String) {
         viewModelScope.launch {
-            val chapter = _chapters.value.find { it.id == chapterId } ?: return@launch
+            val chapter = chapters.value.find { it.id == chapterId } ?: return@launch
             repository.updateChapter(chapter.copy(status = newStatus))
         }
     }
 
     fun toggleChapterRevision(chapterId: Long, isNeeded: Boolean) {
         viewModelScope.launch {
-            val chapter = _chapters.value.find { it.id == chapterId } ?: return@launch
+            val chapter = chapters.value.find { it.id == chapterId } ?: return@launch
             repository.updateChapter(chapter.copy(isRevisionNeeded = isNeeded))
         }
     }
