@@ -43,7 +43,8 @@ enum class ScreenDestination {
     REVISION_TRACKER,
     CALENDAR,
     PROGRESS_ANALYTICS,
-    PROFILE
+    PROFILE,
+    NOTIFICATIONS
 }
 
 enum class SyllabusFilter {
@@ -121,6 +122,67 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _isNotificationsEnabled.value = newVal
     }
 
+    private val notificationEngine = com.example.domain.notification.AdaptiveNotificationEngine(prefs)
+
+    val isAdaptiveNotificationsEnabled = MutableStateFlow(prefs.isAdaptiveNotificationsEnabled)
+    fun toggleAdaptiveNotifications() {
+        val newVal = !isAdaptiveNotificationsEnabled.value
+        prefs.isAdaptiveNotificationsEnabled = newVal
+        isAdaptiveNotificationsEnabled.value = newVal
+    }
+
+    val quietHoursStart = MutableStateFlow(prefs.quietHoursStart)
+    val quietHoursEnd = MutableStateFlow(prefs.quietHoursEnd)
+    fun setQuietHours(start: Int, end: Int) {
+        prefs.quietHoursStart = start
+        prefs.quietHoursEnd = end
+        quietHoursStart.value = start
+        quietHoursEnd.value = end
+    }
+
+    val catAdmissionEnabled = MutableStateFlow(prefs.catAdmissionEnabled)
+    val catRevisionEnabled = MutableStateFlow(prefs.catRevisionEnabled)
+    val catPlanEnabled = MutableStateFlow(prefs.catPlanEnabled)
+    val catRoutineEnabled = MutableStateFlow(prefs.catRoutineEnabled)
+
+    fun toggleCategory(category: com.example.domain.notification.NotificationCategory) {
+        when (category) {
+            com.example.domain.notification.NotificationCategory.ADMISSION -> {
+                val v = !catAdmissionEnabled.value
+                prefs.catAdmissionEnabled = v
+                catAdmissionEnabled.value = v
+            }
+            com.example.domain.notification.NotificationCategory.REVISION -> {
+                val v = !catRevisionEnabled.value
+                prefs.catRevisionEnabled = v
+                catRevisionEnabled.value = v
+            }
+            com.example.domain.notification.NotificationCategory.PLAN_RECOVERY -> {
+                val v = !catPlanEnabled.value
+                prefs.catPlanEnabled = v
+                catPlanEnabled.value = v
+            }
+            com.example.domain.notification.NotificationCategory.ROUTINE -> {
+                val v = !catRoutineEnabled.value
+                prefs.catRoutineEnabled = v
+                catRoutineEnabled.value = v
+            }
+            else -> {}
+        }
+    }
+
+    fun dismissNotification(id: String) {
+        prefs.dismissNotification(id)
+        _notificationTrigger.value = System.currentTimeMillis()
+    }
+
+    fun snoozeNotification(id: String, durationMs: Long) {
+        prefs.snoozeNotification(id, System.currentTimeMillis() + durationMs)
+        _notificationTrigger.value = System.currentTimeMillis()
+    }
+
+    private val _notificationTrigger = MutableStateFlow(System.currentTimeMillis())
+
     // Navigation
     private val _currentScreen = MutableStateFlow(ScreenDestination.HOME)
     val currentScreen: StateFlow<ScreenDestination> = _currentScreen.asStateFlow()
@@ -131,7 +193,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun navigateTo(destination: ScreenDestination) {
         _currentScreen.value = destination
         when (destination) {
-            ScreenDestination.HOME -> _currentTab.value = BottomTab.HOME
+            ScreenDestination.HOME, ScreenDestination.NOTIFICATIONS -> _currentTab.value = BottomTab.HOME
             ScreenDestination.SYLLABUS, ScreenDestination.SUBJECT_DETAILS, ScreenDestination.REVISION_TRACKER -> _currentTab.value = BottomTab.SYLLABUS
             ScreenDestination.FOCUS -> _currentTab.value = BottomTab.FOCUS
             ScreenDestination.CALENDAR, ScreenDestination.SMART_PLANNER -> _currentTab.value = BottomTab.CALENDAR
@@ -174,6 +236,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     val plannerTasks: StateFlow<List<PlannerTaskEntity>> = repository.allPlannerTasks
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val notifications: StateFlow<List<com.example.domain.notification.AdaptiveNotification>> = combine(
+        admissions,
+        chapters,
+        plannerTasks,
+        _notificationTrigger
+    ) { adm, ch, plan, _ ->
+        notificationEngine.evaluateNotifications(adm, ch, plan)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val revisionItems: StateFlow<List<RevisionItemEntity>> = repository.allRevisions
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -673,6 +744,25 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun deleteAdmissionTarget(id: Long) {
         viewModelScope.launch {
             repository.deleteAdmissionTarget(id)
+        }
+    }
+
+    fun updateAdmissionTarget(id: Long, university: String, unit: String, deadlineDays: Int, examDays: Int, notes: String) {
+        val now = System.currentTimeMillis()
+        val dayMs = 86_400_000L
+        viewModelScope.launch {
+            val existing = admissions.value.find { it.id == id }
+            if (existing != null) {
+                repository.updateAdmissionTarget(
+                    existing.copy(
+                        universityName = university.ifBlank { existing.universityName },
+                        unit = unit.ifBlank { existing.unit },
+                        applicationDeadline = now + (deadlineDays * dayMs),
+                        examDate = now + (examDays * dayMs),
+                        notes = notes
+                    )
+                )
+            }
         }
     }
 

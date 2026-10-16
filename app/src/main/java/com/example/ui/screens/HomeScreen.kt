@@ -136,7 +136,7 @@ fun HomeScreen(
 
                 Box(contentAlignment = Alignment.TopEnd) {
                     IconButton(
-                        onClick = { onNavigate(ScreenDestination.CALENDAR) },
+                        onClick = { onNavigate(ScreenDestination.NOTIFICATIONS) },
                         modifier = Modifier.size(36.dp)
                     ) {
                         Icon(
@@ -171,10 +171,12 @@ fun HomeScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
-                        val greeting = if (lang == AppLanguage.BANGLA) {
-                            if (isDarkTheme) "শুভ সন্ধ্যা," else "শুভ সকাল,"
-                        } else {
-                            if (isDarkTheme) "Good evening," else "Good morning,"
+                        val hour = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
+                        val (greeting, emoji) = when (hour) {
+                            in 5..11 -> Pair(AppStrings.greetingMorning(lang) + ",", "🌅")
+                            in 12..16 -> Pair(AppStrings.greetingAfternoon(lang) + ",", "☀️")
+                            in 17..20 -> Pair(AppStrings.greetingEvening(lang) + ",", "🌆")
+                            else -> Pair(AppStrings.greetingNight(lang) + ",", "🌙")
                         }
 
                         Text(
@@ -196,7 +198,7 @@ fun HomeScreen(
                             )
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
-                                text = if (isDarkTheme) "🌙" else "👋",
+                                text = emoji,
                                 fontSize = 20.sp
                             )
                         }

@@ -284,4 +284,19 @@ object AppStrings {
         "StudyHub হলো বিশ্ববিদ্যালয় ভর্তি পরীক্ষার্থীদের জন্য একটি পূর্ণাঙ্গ প্রস্তুতি ও ট্র্যাকিং অ্যাপ。\n\n• সিলেবাস: বিষয় ও অধ্যায়ের প্রস্তুতি ট্র্যাক করুন।\n• ফোকাস টাইমার: স্টাডি সেশন রেকর্ড করুন।\n• স্মার্ট প্ল্যানার: অগ্রাধিকারভিত্তিক পড়ার তালিকা তৈরি করুন।\n• ভর্তি ক্যালেন্ডার: আবেদন ও পরীক্ষার তারিখ সংরক্ষণ করুন।"
     else
         "StudyHub is a comprehensive prep companion for university admission candidates.\n\n• Syllabus: Track subjects, chapters & completion status.\n• Focus Timer: Record real study sessions with pause/resume.\n• Smart Planner: Prioritize tasks and schedule revisions.\n• Admission Calendar: Track application deadlines & exam dates."
+
+    fun notificationsTitle(lang: AppLanguage) = if (lang == AppLanguage.BANGLA) "নোটিফিকেশন ও রিমাইন্ডার" else "Notifications & Reminders"
+    fun emptyNotificationsTitle(lang: AppLanguage) = if (lang == AppLanguage.BANGLA) "কোনো নতুন নোটিফিকেশন নেই" else "No Notifications Yet"
+    fun emptyNotificationsDesc(lang: AppLanguage) = if (lang == AppLanguage.BANGLA) "আপনার আসন্ন পরীক্ষা ও রিভিশন রিমাইন্ডার এখানে দেখা যাবে।" else "Your upcoming exam reminders and study notices will appear here."
+    fun admissionDeadlineAlert(uni: String, days: Int, lang: AppLanguage): String {
+        val d = formatNumber(days, lang)
+        return if (lang == AppLanguage.BANGLA) "$uni ভর্তি পরীক্ষার আর মাত্র $d দিন বাকি!" else "Admission exam for $uni is coming up in $d days!"
+    }
+    fun revisionReminderAlert(topic: String, lang: AppLanguage): String =
+        if (lang == AppLanguage.BANGLA) "রিভিশন প্রয়োজন: $topic" else "Revision needed for: $topic"
+
+    fun greetingMorning(lang: AppLanguage) = if (lang == AppLanguage.BANGLA) "শুভ সকাল" else "Good morning"
+    fun greetingAfternoon(lang: AppLanguage) = if (lang == AppLanguage.BANGLA) "শুভ দুপুর" else "Good afternoon"
+    fun greetingEvening(lang: AppLanguage) = if (lang == AppLanguage.BANGLA) "শুভ সন্ধ্যা" else "Good evening"
+    fun greetingNight(lang: AppLanguage) = if (lang == AppLanguage.BANGLA) "শুভ রাত্রি" else "Good night"
 }

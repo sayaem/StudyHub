@@ -24,6 +24,7 @@ import androidx.compose.material.icons.filled.AccountBalance
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CalendarToday
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
@@ -77,6 +78,7 @@ fun CalendarScreen(
     var filterType by remember { mutableStateOf("ALL") } // "ALL", "UNIVERSITY", "COLLEGE"
     var showAddDialog by remember { mutableStateOf(false) }
     var targetToDelete by remember { mutableStateOf<AdmissionTargetEntity?>(null) }
+    var targetToEdit by remember { mutableStateOf<AdmissionTargetEntity?>(null) }
 
     val cardBg = if (isDarkTheme) DarkMidnightSurface else Color.White
     val borderCol = if (isDarkTheme) DarkBorder else MaterialTheme.colorScheme.outlineVariant
@@ -126,6 +128,15 @@ fun CalendarScreen(
                         color = textPrimary
                     )
                 }
+            }
+
+            item {
+                Text(
+                    text = if (lang == AppLanguage.BANGLA) "আসন্ন বিশ্ববিদ্যালয় ও কলেজ ভর্তি পরীক্ষার সময়সূচী" else "Track application deadlines and university admission exams",
+                    fontSize = 12.sp,
+                    color = textSecondary,
+                    modifier = Modifier.padding(horizontal = 4.dp)
+                )
             }
 
             // Filter Pills: All | University | College
@@ -304,6 +315,20 @@ fun CalendarScreen(
                                 Spacer(modifier = Modifier.width(4.dp))
 
                                 IconButton(
+                                    onClick = { targetToEdit = target },
+                                    modifier = Modifier.size(32.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Edit,
+                                        contentDescription = AppStrings.editAction(lang),
+                                        tint = textSecondary.copy(alpha = 0.6f),
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
+
+                                Spacer(modifier = Modifier.width(4.dp))
+
+                                IconButton(
                                     onClick = { targetToDelete = target },
                                     modifier = Modifier.size(32.dp)
                                 ) {
@@ -344,6 +369,27 @@ fun CalendarScreen(
             onConfirm = { uni, unit, dead, exam, notes ->
                 viewModel.addAdmissionTarget(uni, unit, dead, exam, notes)
                 showAddDialog = false
+            }
+        )
+    }
+
+    if (targetToEdit != null) {
+        val t = targetToEdit!!
+        val dDays = java.util.concurrent.TimeUnit.MILLISECONDS.toDays(t.applicationDeadline - now).toInt().coerceAtLeast(0)
+        val eDays = java.util.concurrent.TimeUnit.MILLISECONDS.toDays(t.examDate - now).toInt().coerceAtLeast(0)
+        AddAdmissionBottomSheet(
+            isDarkTheme = isDarkTheme,
+            lang = lang,
+            initialUni = t.universityName,
+            initialUnit = t.unit,
+            initialDeadlineDays = dDays,
+            initialExamDays = eDays,
+            initialNotes = t.notes,
+            isEditing = true,
+            onDismiss = { targetToEdit = null },
+            onConfirm = { uni, unit, dead, exam, notes ->
+                viewModel.updateAdmissionTarget(t.id, uni, unit, dead, exam, notes)
+                targetToEdit = null
             }
         )
     }

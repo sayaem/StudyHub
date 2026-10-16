@@ -61,6 +61,7 @@ import com.example.ui.screens.RevisionTrackerScreen
 import com.example.ui.screens.SmartPlannerScreen
 import com.example.ui.screens.SubjectDetailsScreen
 import com.example.ui.screens.SyllabusScreen
+import com.example.ui.screens.NotificationsScreen
 import com.example.ui.theme.DarkBorder
 import com.example.ui.theme.DarkMidnightBg
 import com.example.ui.theme.DarkMidnightSurface
@@ -109,6 +110,7 @@ fun StudyHubApp(viewModel: MainViewModel, isDarkTheme: Boolean) {
             ScreenDestination.SMART_PLANNER -> viewModel.navigateTo(ScreenDestination.HOME)
             ScreenDestination.REVISION_TRACKER -> viewModel.navigateTo(ScreenDestination.SYLLABUS)
             ScreenDestination.PROGRESS_ANALYTICS -> viewModel.navigateTo(ScreenDestination.PROFILE)
+            ScreenDestination.NOTIFICATIONS -> viewModel.navigateTo(ScreenDestination.HOME)
             else -> viewModel.navigateTo(ScreenDestination.HOME)
         }
     }
@@ -188,6 +190,13 @@ fun StudyHubApp(viewModel: MainViewModel, isDarkTheme: Boolean) {
                     viewModel = viewModel,
                     isDarkTheme = isDarkTheme,
                     lang = lang,
+                    onNavigate = { viewModel.navigateTo(it) }
+                )
+                ScreenDestination.NOTIFICATIONS -> NotificationsScreen(
+                    viewModel = viewModel,
+                    isDarkTheme = isDarkTheme,
+                    lang = lang,
+                    onBack = { viewModel.navigateTo(ScreenDestination.HOME) },
                     onNavigate = { viewModel.navigateTo(it) }
                 )
             }

@@ -43,6 +43,55 @@ class PreferencesManager(context: Context) {
         get() = prefs.getBoolean(KEY_NOTIFICATIONS_ENABLED, true)
         set(value) = prefs.edit().putBoolean(KEY_NOTIFICATIONS_ENABLED, value).apply()
 
+    var isAdaptiveNotificationsEnabled: Boolean
+        get() = prefs.getBoolean("key_adaptive_notifications", true)
+        set(value) = prefs.edit().putBoolean("key_adaptive_notifications", value).apply()
+
+    var quietHoursStart: Int
+        get() = prefs.getInt("key_quiet_hours_start", 22)
+        set(value) = prefs.edit().putInt("key_quiet_hours_start", value).apply()
+
+    var quietHoursEnd: Int
+        get() = prefs.getInt("key_quiet_hours_end", 7)
+        set(value) = prefs.edit().putInt("key_quiet_hours_end", value).apply()
+
+    var maxDailyNotifications: Int
+        get() = prefs.getInt("key_max_daily_notifs", 3)
+        set(value) = prefs.edit().putInt("key_max_daily_notifs", value).apply()
+
+    var catAdmissionEnabled: Boolean
+        get() = prefs.getBoolean("key_cat_admission", true)
+        set(value) = prefs.edit().putBoolean("key_cat_admission", value).apply()
+
+    var catRevisionEnabled: Boolean
+        get() = prefs.getBoolean("key_cat_revision", true)
+        set(value) = prefs.edit().putBoolean("key_cat_revision", value).apply()
+
+    var catPlanEnabled: Boolean
+        get() = prefs.getBoolean("key_cat_plan", true)
+        set(value) = prefs.edit().putBoolean("key_cat_plan", value).apply()
+
+    var catRoutineEnabled: Boolean
+        get() = prefs.getBoolean("key_cat_routine", true)
+        set(value) = prefs.edit().putBoolean("key_cat_routine", value).apply()
+
+    fun dismissNotification(id: String) {
+        prefs.edit().putBoolean("dismissed_$id", true).apply()
+    }
+
+    fun isNotificationDismissed(id: String): Boolean {
+        return prefs.getBoolean("dismissed_$id", false)
+    }
+
+    fun snoozeNotification(id: String, untilMs: Long) {
+        prefs.edit().putLong("snooze_$id", untilMs).apply()
+    }
+
+    fun isNotificationSnoozed(id: String, now: Long): Boolean {
+        val until = prefs.getLong("snooze_$id", 0L)
+        return now < until
+    }
+
     // Timer persistence
     fun saveTimerState(
         isRunning: Boolean,
