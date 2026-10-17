@@ -23,6 +23,7 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.CalendarToday
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.NotificationsNone
 import androidx.compose.material.icons.filled.PlayArrow
@@ -170,17 +171,17 @@ fun HomeScreen(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        val hour = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
-                        val (greeting, emoji) = when (hour) {
-                            in 5..11 -> Pair(AppStrings.greetingMorning(lang) + ",", "🌅")
-                            in 12..16 -> Pair(AppStrings.greetingAfternoon(lang) + ",", "☀️")
-                            in 17..20 -> Pair(AppStrings.greetingEvening(lang) + ",", "🌆")
-                            else -> Pair(AppStrings.greetingNight(lang) + ",", "🌙")
-                        }
+                    val hour = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
+                    val data = when (hour) {
+                        in 5..11 -> Triple(AppStrings.greetingMorning(lang) + ",", "🌅", R.drawable.bg_morning)
+                        in 12..16 -> Triple(AppStrings.greetingAfternoon(lang) + ",", "☀️", R.drawable.bg_morning)
+                        in 17..20 -> Triple(AppStrings.greetingEvening(lang) + ",", "🌆", R.drawable.bg_night)
+                        else -> Triple(AppStrings.greetingNight(lang) + ",", "🌙", R.drawable.bg_night)
+                    }
 
+                    Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = greeting,
+                            text = data.first,
                             style = MaterialTheme.typography.headlineSmall.copy(
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 22.sp
@@ -197,10 +198,7 @@ fun HomeScreen(
                                 color = textPrimary
                             )
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = emoji,
-                                fontSize = 20.sp
-                            )
+                            Text(text = data.second, fontSize = 20.sp)
                         }
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
@@ -214,18 +212,12 @@ fun HomeScreen(
                         )
                     }
 
-                    Box(
-                        modifier = Modifier
-                            .size(width = 84.dp, height = 70.dp)
-                            .clip(RoundedCornerShape(16.dp))
-                    ) {
-                        Image(
-                            painter = painterResource(id = if (isDarkTheme) R.drawable.bg_night else R.drawable.bg_morning),
-                            contentDescription = null,
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier.fillMaxSize()
-                        )
-                    }
+                    Image(
+                        painter = painterResource(id = data.third),
+                        contentDescription = null,
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier.size(70.dp).padding(start = 8.dp)
+                    )
                 }
             }
         }
@@ -661,6 +653,16 @@ fun HomeScreen(
                         iconTint = RoyalBlue,
                         textPrimary = textPrimary,
                         onClick = { showAddExamDialog = true }
+                    )
+
+                    // 5. Progress
+                    QuickActionItem(
+                        icon = Icons.Default.Info,
+                        label = if (lang == AppLanguage.BANGLA) "অগ্রগতি" else "Progress",
+                        iconBg = if (isDarkTheme) MintGreen.copy(alpha = 0.2f) else MintGreenLight,
+                        iconTint = MintGreen,
+                        textPrimary = textPrimary,
+                        onClick = { onNavigate(ScreenDestination.PROGRESS_ANALYTICS) }
                     )
                 }
             }
