@@ -37,4 +37,10 @@ interface RevisionItemDao {
 
     @Query("UPDATE revision_items SET completedCount = :completed, isCompleted = :isCompleted, lastRevisedAt = :timestamp WHERE id = :id")
     suspend fun updateProgress(id: Long, completed: Int, isCompleted: Boolean, timestamp: Long)
+
+    @Query("UPDATE revision_items SET completedCount = :completed, isCompleted = :isCompleted, lastRevisedAt = :timestamp, nextRevisionDate = :nextDate WHERE id = :id")
+    suspend fun updateProgressAndNextDate(id: Long, completed: Int, isCompleted: Boolean, timestamp: Long, nextDate: Long)
+
+    @Query("UPDATE revision_items SET nextRevisionDate = :nextDate WHERE id = :id")
+    suspend fun postponeRevision(id: Long, nextDate: Long)
 }

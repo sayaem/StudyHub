@@ -88,8 +88,20 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             val isDarkTheme by viewModel.isDarkTheme.collectAsStateWithLifecycle()
+            val isOnboardingCompleted by viewModel.isOnboardingCompleted.collectAsStateWithLifecycle()
+
             MyApplicationTheme(darkTheme = isDarkTheme) {
-                StudyHubApp(viewModel = viewModel, isDarkTheme = isDarkTheme)
+                if (!isOnboardingCompleted) {
+                    com.example.ui.screens.SplashAndOnboardingScreen(
+                        viewModel = viewModel,
+                        isDarkTheme = isDarkTheme,
+                        onComplete = { goal, focus, breakMins ->
+                            viewModel.completeOnboarding(goal, focus, breakMins)
+                        }
+                    )
+                } else {
+                    StudyHubApp(viewModel = viewModel, isDarkTheme = isDarkTheme)
+                }
             }
         }
     }

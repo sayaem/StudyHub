@@ -43,6 +43,22 @@ class PreferencesManager(context: Context) {
         get() = prefs.getBoolean(KEY_NOTIFICATIONS_ENABLED, true)
         set(value) = prefs.edit().putBoolean(KEY_NOTIFICATIONS_ENABLED, value).apply()
 
+    var isOnboardingCompleted: Boolean
+        get() = prefs.getBoolean("key_is_onboarding_completed", false)
+        set(value) = prefs.edit().putBoolean("key_is_onboarding_completed", value).apply()
+
+    var onboardingStudyGoalHours: Int
+        get() = prefs.getInt("key_onboarding_study_goal_hours", 4)
+        set(value) = prefs.edit().putInt("key_onboarding_study_goal_hours", value).apply()
+
+    var onboardingFocusMinutes: Int
+        get() = prefs.getInt("key_onboarding_focus_minutes", 45)
+        set(value) = prefs.edit().putInt("key_onboarding_focus_minutes", value).apply()
+
+    var onboardingBreakMinutes: Int
+        get() = prefs.getInt("key_onboarding_break_minutes", 10)
+        set(value) = prefs.edit().putInt("key_onboarding_break_minutes", value).apply()
+
     var isAdaptiveNotificationsEnabled: Boolean
         get() = prefs.getBoolean("key_adaptive_notifications", true)
         set(value) = prefs.edit().putBoolean("key_adaptive_notifications", value).apply()
@@ -90,6 +106,35 @@ class PreferencesManager(context: Context) {
     fun isNotificationSnoozed(id: String, now: Long): Boolean {
         val until = prefs.getLong("snooze_$id", 0L)
         return now < until
+    }
+
+    // Study Planning and Goals
+    var dailyAvailableStudyHours: Int
+        get() = prefs.getInt("key_daily_available_hours", 4)
+        set(value) = prefs.edit().putInt("key_daily_available_hours", value.coerceIn(1, 14)).apply()
+
+    var preferredStudyPeriod: String
+        get() = prefs.getString("key_preferred_study_period", "ALL") ?: "ALL"
+        set(value) = prefs.edit().putString("key_preferred_study_period", value).apply()
+
+    var weeklyStudyHoursGoal: Int
+        get() = prefs.getInt("key_weekly_study_hours_goal", 20)
+        set(value) = prefs.edit().putInt("key_weekly_study_hours_goal", value.coerceIn(1, 80)).apply()
+
+    var weeklyChaptersGoal: Int
+        get() = prefs.getInt("key_weekly_chapters_goal", 5)
+        set(value) = prefs.edit().putInt("key_weekly_chapters_goal", value.coerceIn(1, 50)).apply()
+
+    var mockTestTargetScorePercentage: Float
+        get() = prefs.getFloat("key_mock_test_target_pct", 80f)
+        set(value) = prefs.edit().putFloat("key_mock_test_target_pct", value.coerceIn(10f, 100f)).apply()
+
+    fun dismissInsight(id: String) {
+        prefs.edit().putBoolean("insight_dismissed_$id", true).apply()
+    }
+
+    fun isInsightDismissed(id: String): Boolean {
+        return prefs.getBoolean("insight_dismissed_$id", false)
     }
 
     // Timer persistence

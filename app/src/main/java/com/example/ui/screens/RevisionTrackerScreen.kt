@@ -23,7 +23,9 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Book
 import androidx.compose.material.icons.filled.Calculate
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.MoreTime
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Science
 import androidx.compose.material3.AlertDialog
@@ -59,6 +61,7 @@ import com.example.ui.theme.DarkBorder
 import com.example.ui.theme.DarkMidnightSurface
 import com.example.ui.theme.DarkTextMuted
 import com.example.ui.theme.DarkTextWhite
+import com.example.ui.theme.MintGreen
 import com.example.ui.theme.NavyText
 import com.example.ui.theme.RoyalBlue
 import com.example.ui.theme.RoyalBlueLight
@@ -66,6 +69,10 @@ import com.example.ui.theme.SlateBorder
 import com.example.ui.theme.SlateMuted
 import com.example.util.AppLanguage
 import com.example.util.AppStrings
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import java.util.concurrent.TimeUnit
 
 @Composable
 fun RevisionTrackerScreen(
@@ -88,6 +95,8 @@ fun RevisionTrackerScreen(
     val borderCol = if (isDarkTheme) DarkBorder else MaterialTheme.colorScheme.outlineVariant
     val textPrimary = if (isDarkTheme) DarkTextWhite else NavyText
     val textSecondary = if (isDarkTheme) DarkTextMuted else SlateMuted
+
+    val now = System.currentTimeMillis()
 
     LazyColumn(
         modifier = modifier
@@ -120,6 +129,53 @@ fun RevisionTrackerScreen(
                     ),
                     color = textPrimary
                 )
+            }
+        }
+
+        // Info Banner: Spaced Revision Intervals explanation
+        item {
+            StudyHubCard(
+                modifier = Modifier.fillMaxWidth(),
+                backgroundColor = if (isDarkTheme) Color(0xFF1E293B) else RoyalBlueLight.copy(alpha = 0.5f),
+                borderColor = RoyalBlue.copy(alpha = 0.3f)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(14.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(32.dp)
+                            .background(RoyalBlue, CircleShape),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Schedule,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column {
+                        Text(
+                            text = if (lang == AppLanguage.BANGLA) "স্পেসড রিভিশন পদ্ধতি (১-৩-৭-১৪ দিন)" else "Spaced Revision Intervals (1-3-7-14 Days)",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = textPrimary
+                        )
+                        Text(
+                            text = if (lang == AppLanguage.BANGLA)
+                                "অধ্যায় শেষ করার পর যথাসময়ে রিভিশন সম্পন্ন করলে দীর্ঘমেয়াদী স্মৃতিতে স্থায়ী হয়।"
+                            else
+                                "Timely spaced reviews dramatically increase memory retention for admission tests.",
+                            fontSize = 11.sp,
+                            color = textSecondary
+                        )
+                    }
+                }
             }
         }
 
@@ -192,77 +248,167 @@ fun RevisionTrackerScreen(
 
                 val iconTint = if (item.completedCount > 0) RoyalBlue else SlateMuted
 
+                val isOverdue = !item.isCompleted && item.nextRevisionDate < (now - 3600000L)
+                val isDueToday = !item.isCompleted && !isOverdue && item.nextRevisionDate <= (now + 86400000L)
+
+                val statusBadgeColor = when {
+                    item.isCompleted -> MintGreen
+                    isOverdue -> AlertRed
+                    isDueToday -> Color(0xFFF59E0B)
+                    else -> RoyalBlue
+                }
+
+                val dueText = if (item.isCompleted) {
+                    if (lang == AppLanguage.BANGLA) "রিভিশন সম্পূর্ণ" else "Fully Mastered"
+                } else if (isOverdue) {
+                    if (lang == AppLanguage.BANGLA) "রিভিশন বাকি (দেরি)" else "Overdue"
+                } else {
+                    val daysUntil = TimeUnit.MILLISECONDS.toDays(item.nextRevisionDate - now).toInt()
+                    if (daysUntil <= 0) {
+                        if (lang == AppLanguage.BANGLA) "আজকের রিভিশন" else "Due Today"
+                    } else {
+                        if (lang == AppLanguage.BANGLA) "${AppStrings.toBengaliDigits(daysUntil.toString())} দিন পর" else "Due in ${daysUntil}d"
+                    }
+                }
+
                 StudyHubCard(
                     modifier = Modifier.fillMaxWidth(),
                     backgroundColor = cardBg,
-                    borderColor = borderCol,
-                    onClick = { viewModel.incrementRevision(item.id, item.completedCount, item.totalCount) }
+                    borderColor = if (isOverdue) AlertRed.copy(alpha = 0.4f) else borderCol
                 ) {
-                    Row(
+                    Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 14.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                            .padding(14.dp)
                     ) {
                         Row(
-                            modifier = Modifier.weight(1f),
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(38.dp)
-                                    .background(iconBg, RoundedCornerShape(10.dp)),
-                                contentAlignment = Alignment.Center
+                            Row(
+                                modifier = Modifier.weight(1f),
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Icon(
-                                    imageVector = icon,
-                                    contentDescription = null,
-                                    tint = iconTint,
-                                    modifier = Modifier.size(20.dp)
-                                )
+                                Box(
+                                    modifier = Modifier
+                                        .size(38.dp)
+                                        .background(iconBg, RoundedCornerShape(10.dp)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = icon,
+                                        contentDescription = null,
+                                        tint = iconTint,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+
+                                Spacer(modifier = Modifier.width(12.dp))
+
+                                Column {
+                                    Text(
+                                        text = item.title,
+                                        style = MaterialTheme.typography.bodyLarge.copy(
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 14.sp
+                                        ),
+                                        color = textPrimary
+                                    )
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text(
+                                            text = item.subjectName,
+                                            fontSize = 11.sp,
+                                            color = textSecondary
+                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Surface(
+                                            shape = RoundedCornerShape(6.dp),
+                                            color = statusBadgeColor.copy(alpha = 0.15f)
+                                        ) {
+                                            Text(
+                                                text = dueText,
+                                                fontSize = 10.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = statusBadgeColor,
+                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                            )
+                                        }
+                                    }
+                                }
                             }
 
-                            Spacer(modifier = Modifier.width(14.dp))
-
-                            Column {
-                                Text(
-                                    text = item.title,
-                                    style = MaterialTheme.typography.bodyLarge.copy(
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 14.sp
-                                    ),
-                                    color = textPrimary
-                                )
-                                Spacer(modifier = Modifier.height(2.dp))
-                                Text(
-                                    text = item.subjectName,
-                                    fontSize = 11.sp,
-                                    color = textSecondary
-                                )
-                            }
-                        }
-
-                        Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
                                 text = "${AppStrings.formatNumber(item.completedCount, lang)} / ${AppStrings.formatNumber(item.totalCount, lang)}",
                                 fontSize = 13.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = textSecondary
                             )
+                        }
 
-                            Spacer(modifier = Modifier.width(6.dp))
-
-                            IconButton(
-                                onClick = { viewModel.deleteRevision(item.id) },
-                                modifier = Modifier.size(26.dp)
+                        if (!item.isCompleted) {
+                            Spacer(modifier = Modifier.height(10.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.End,
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Icon(
-                                    imageVector = Icons.Default.Delete,
-                                    contentDescription = AppStrings.deleteAction(lang),
-                                    tint = textSecondary.copy(alpha = 0.5f),
-                                    modifier = Modifier.size(15.dp)
-                                )
+                                // Postpone 1 day button
+                                TextButton(
+                                    onClick = { viewModel.postponeRevision(item.id, 1) },
+                                    modifier = Modifier.height(32.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.MoreTime,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(14.dp),
+                                        tint = textSecondary
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = if (lang == AppLanguage.BANGLA) "+১ দিন পেছান" else "Postpone 1d",
+                                        fontSize = 11.sp,
+                                        color = textSecondary
+                                    )
+                                }
+
+                                Spacer(modifier = Modifier.width(6.dp))
+
+                                // Mark step revised button
+                                Button(
+                                    onClick = { viewModel.markRevisionStepCompleted(item.id, item.completedCount, item.totalCount) },
+                                    colors = ButtonDefaults.buttonColors(containerColor = RoyalBlue),
+                                    shape = RoundedCornerShape(8.dp),
+                                    modifier = Modifier.height(32.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Check,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(14.dp),
+                                        tint = Color.White
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = if (lang == AppLanguage.BANGLA) "রিভাইজড" else "Mark Revised",
+                                        fontSize = 11.sp,
+                                        color = Color.White
+                                    )
+                                }
+
+                                Spacer(modifier = Modifier.width(4.dp))
+
+                                IconButton(
+                                    onClick = { viewModel.deleteRevision(item.id) },
+                                    modifier = Modifier.size(28.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Delete,
+                                        contentDescription = AppStrings.deleteAction(lang),
+                                        tint = textSecondary.copy(alpha = 0.5f),
+                                        modifier = Modifier.size(15.dp)
+                                    )
+                                }
                             }
                         }
                     }
@@ -350,8 +496,8 @@ fun RevisionTrackerScreen(
                     )
                     OutlinedTextField(
                         value = totalTarget.toString(),
-                        onValueChange = { totalTarget = it.toIntOrNull() ?: 3 },
-                        label = { Text(if (lang == AppLanguage.BANGLA) "লক্ষ্যমাত্রা রিভিশন সংখ্যা" else "Target Revisions (e.g. 3 or 4)") },
+                        onValueChange = { totalTarget = it.toIntOrNull() ?: 4 },
+                        label = { Text(if (lang == AppLanguage.BANGLA) "লক্ষ্যমাত্রা রিভিশন সংখ্যা" else "Target Revisions (e.g. 4)") },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
                         colors = OutlinedTextFieldDefaults.colors(

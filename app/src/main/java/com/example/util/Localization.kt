@@ -28,6 +28,10 @@ object AppStrings {
         return if (lang == AppLanguage.BANGLA) toBengaliDigits(str) else str
     }
 
+    fun formatNumber(text: String, lang: AppLanguage): String {
+        return if (lang == AppLanguage.BANGLA) toBengaliDigits(text) else text
+    }
+
     fun formatDuration(totalSeconds: Long, lang: AppLanguage): String {
         val hours = totalSeconds / 3600
         val minutes = (totalSeconds % 3600) / 60

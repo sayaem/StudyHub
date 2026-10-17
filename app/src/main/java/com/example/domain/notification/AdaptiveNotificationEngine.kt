@@ -2,7 +2,9 @@ package com.example.domain.notification
 
 import com.example.data.model.AdmissionTargetEntity
 import com.example.data.model.ChapterEntity
+import com.example.data.model.MistakeEntity
 import com.example.data.model.PlannerTaskEntity
+import com.example.data.model.RevisionItemEntity
 import com.example.util.AppLanguage
 import com.example.util.PreferencesManager
 import java.util.Calendar
@@ -47,7 +49,12 @@ class AdaptiveNotificationEngine(private val prefs: PreferencesManager) {
     fun evaluateNotifications(
         admissions: List<AdmissionTargetEntity>,
         chapters: List<ChapterEntity>,
-        plannerTasks: List<PlannerTaskEntity>
+        plannerTasks: List<PlannerTaskEntity>,
+        revisions: List<RevisionItemEntity> = emptyList(),
+        mistakes: List<MistakeEntity> = emptyList(),
+        isSyllabusBehind: Boolean = false,
+        syllabusBehindReasonEn: String = "",
+        syllabusBehindReasonBn: String = ""
     ): List<AdaptiveNotification> {
         if (!prefs.isNotificationsEnabled || !prefs.isAdaptiveNotificationsEnabled) {
             return emptyList()
@@ -67,35 +74,149 @@ class AdaptiveNotificationEngine(private val prefs: PreferencesManager) {
 
         val candidates = mutableListOf<AdaptiveNotification>()
 
-        // 1. Admission Deadlines
+        // 1. Admission Deadlines & Exam Dates
         if (prefs.catAdmissionEnabled) {
             for (admission in admissions) {
-                if (admission.status == "APPLIED" || admission.status == "COMPLETED") continue
-                val daysLeft = TimeUnit.MILLISECONDS.toDays(admission.examDate - now).toInt()
-                if (daysLeft in 0..30) {
-                    val priority = if (daysLeft <= 3) NotificationPriority.CRITICAL else NotificationPriority.HIGH
-                    candidates.add(
-                        AdaptiveNotification(
-                            id = "adm_${admission.id}",
-                            category = NotificationCategory.ADMISSION,
-                            titleEn = "Admission Deadline Alert",
-                            titleBn = "ভর্তি পরীক্ষার রিমাইন্ডার",
-                            descriptionEn = "Your admission exam for ${admission.universityName} is approaching in $daysLeft days. Keep up your preparation!",
-                            descriptionBn = "${admission.universityName}-এর ভর্তি পরীক্ষা আর মাত্র $daysLeft দিন বাকি। প্রস্তুতি জোরদার করুন!",
-                            priority = priority,
-                            timestamp = now,
-                            targetScreen = com.example.ui.ScreenDestination.CALENDAR,
-                            sourceId = admission.id
+                // Application Deadline Reminders (7d, 3d, 1d, 0d) for pending applications
+                if (admission.status == "NOT_APPLIED") {
+                    val daysUntilDeadline = TimeUnit.MILLISECONDS.toDays(admission.applicationDeadline - now).toInt()
+                    when {
+                        daysUntilDeadline == 0 -> {
+                            candidates.add(
+                                AdaptiveNotification(
+                                    id = "adm_dead_today_${admission.id}",
+                                    category = NotificationCategory.ADMISSION,
+                                    titleEn = "Application Deadline Today!",
+                                    titleBn = "আবেদনের শেষ সময় আজ!",
+                                    descriptionEn = "Today is the final day to submit your application for ${admission.universityName} (${admission.unit}). Don't miss it!",
+                                    descriptionBn = "আজ ${admission.universityName} (${admission.unit})-এর আবেদনের শেষ দিন! দ্রুত আবেদন সম্পন্ন করুন।",
+                                    priority = NotificationPriority.CRITICAL,
+                                    timestamp = now,
+                                    targetScreen = com.example.ui.ScreenDestination.CALENDAR,
+                                    sourceId = admission.id
+                                )
+                            )
+                        }
+                        daysUntilDeadline == 1 -> {
+                            candidates.add(
+                                AdaptiveNotification(
+                                    id = "adm_dead_1d_${admission.id}",
+                                    category = NotificationCategory.ADMISSION,
+                                    titleEn = "1 Day Left to Apply",
+                                    titleBn = "আবেদনের শেষ সময় কাল!",
+                                    descriptionEn = "Application for ${admission.universityName} closes tomorrow. Complete fee payment and submission.",
+                                    descriptionBn = "${admission.universityName}-এ আবেদনের সময় আগামীকাল শেষ হবে। ফি পরিশোধ ও আবেদন নিশ্চিত করুন।",
+                                    priority = NotificationPriority.CRITICAL,
+                                    timestamp = now,
+                                    targetScreen = com.example.ui.ScreenDestination.CALENDAR,
+                                    sourceId = admission.id
+                                )
+                            )
+                        }
+                        daysUntilDeadline in 2..3 -> {
+                            candidates.add(
+                                AdaptiveNotification(
+                                    id = "adm_dead_${daysUntilDeadline}d_${admission.id}",
+                                    category = NotificationCategory.ADMISSION,
+                                    titleEn = "Application Deadline in $daysUntilDeadline Days",
+                                    titleBn = "আবেদনের বাকি আর $daysUntilDeadline দিন",
+                                    descriptionEn = "Deadline approaching for ${admission.universityName} in $daysUntilDeadline days. Ensure documents and details are ready.",
+                                    descriptionBn = "${admission.universityName}-এ আবেদনের আর মাত্র $daysUntilDeadline দিন বাকি। প্রয়োজনীয় কাগজপত্র প্রস্তুত রাখুন।",
+                                    priority = NotificationPriority.HIGH,
+                                    timestamp = now,
+                                    targetScreen = com.example.ui.ScreenDestination.CALENDAR,
+                                    sourceId = admission.id
+                                )
+                            )
+                        }
+                        daysUntilDeadline in 4..7 -> {
+                            candidates.add(
+                                AdaptiveNotification(
+                                    id = "adm_dead_${daysUntilDeadline}d_${admission.id}",
+                                    category = NotificationCategory.ADMISSION,
+                                    titleEn = "Upcoming Deadline: ${admission.universityName}",
+                                    titleBn = "আসন্ন আবেদন শেষ সময়: ${admission.universityName}",
+                                    descriptionEn = "Application window closes in $daysUntilDeadline days (${admission.unit}).",
+                                    descriptionBn = "${admission.universityName}-এ আবেদনের সময় আর $daysUntilDeadline দিন পর শেষ হবে।",
+                                    priority = NotificationPriority.MEDIUM,
+                                    timestamp = now,
+                                    targetScreen = com.example.ui.ScreenDestination.CALENDAR,
+                                    sourceId = admission.id
+                                )
+                            )
+                        }
+                    }
+                }
+
+                // Exam Date Countdown
+                if (admission.status != "COMPLETED") {
+                    val daysUntilExam = TimeUnit.MILLISECONDS.toDays(admission.examDate - now).toInt()
+                    if (daysUntilExam in 0..30) {
+                        val priority = when {
+                            daysUntilExam <= 1 -> NotificationPriority.CRITICAL
+                            daysUntilExam <= 7 -> NotificationPriority.HIGH
+                            else -> NotificationPriority.MEDIUM
+                        }
+                        candidates.add(
+                            AdaptiveNotification(
+                                id = "adm_exam_${admission.id}",
+                                category = NotificationCategory.ADMISSION,
+                                titleEn = "Admission Test in $daysUntilExam Days",
+                                titleBn = "ভর্তি পরীক্ষা আর $daysUntilExam দিন",
+                                descriptionEn = "Your exam for ${admission.universityName} (${admission.unit}) is in $daysUntilExam days. Focus on mock tests and revision.",
+                                descriptionBn = "${admission.universityName} (${admission.unit})-এর ভর্তি পরীক্ষা আর মাত্র $daysUntilExam দিন বাকি। প্রস্তুতি জোরদার করুন!",
+                                priority = priority,
+                                timestamp = now,
+                                targetScreen = com.example.ui.ScreenDestination.CALENDAR,
+                                sourceId = admission.id
+                            )
                         )
-                    )
+                    }
                 }
             }
         }
 
-        // 2. Revision Reminders
+        // Mistake Book Review Reminder
+        val unresolvedMistakes = mistakes.filter { it.status != "RESOLVED" }
+        if (unresolvedMistakes.isNotEmpty()) {
+            candidates.add(
+                AdaptiveNotification(
+                    id = "mistakes_unresolved_alert",
+                    category = NotificationCategory.REVISION,
+                    titleEn = "Unresolved Mistakes (${unresolvedMistakes.size})",
+                    titleBn = "ভুলসমূহ পর্যালোচনা (${unresolvedMistakes.size})",
+                    descriptionEn = "You have ${unresolvedMistakes.size} questions in your Mistake Book needing review to avoid repeating errors in mock tests.",
+                    descriptionBn = "আপনার ভুল তালিকায় ${unresolvedMistakes.size}টি প্রশ্ন পর্যালোচনার অপেক্ষায় আছে। মক টেস্টের আগে দেখে নিন।",
+                    priority = NotificationPriority.MEDIUM,
+                    timestamp = now,
+                    targetScreen = com.example.ui.ScreenDestination.MISTAKE_BOOK,
+                    sourceId = 0L
+                )
+            )
+        }
+
+        // 2. Revision Reminders (Spaced Revisions & Chapter flags)
         if (prefs.catRevisionEnabled) {
+            val overdueSpacedRevisions = revisions.filter { !it.isCompleted && it.nextRevisionDate < now }
+            for (rev in overdueSpacedRevisions.take(2)) {
+                candidates.add(
+                    AdaptiveNotification(
+                        id = "rev_spaced_${rev.id}",
+                        category = NotificationCategory.REVISION,
+                        titleEn = "Spaced Revision Due",
+                        titleBn = "রিভিশনের সময় হয়েছে",
+                        descriptionEn = "'${rev.title}' (${rev.subjectName}) is due for revision review (Step ${rev.completedCount + 1}/${rev.totalCount}).",
+                        descriptionBn = "'${rev.title}' (${rev.subjectName}) রিভিশন করার সময় হয়েছে (ধাপ ${rev.completedCount + 1}/${rev.totalCount})।",
+                        priority = NotificationPriority.HIGH,
+                        timestamp = now,
+                        targetScreen = com.example.ui.ScreenDestination.REVISION_TRACKER,
+                        sourceId = rev.id
+                    )
+                )
+            }
+
             val revisionChapters = chapters.filter { it.isRevisionNeeded }
-            for (ch in revisionChapters) {
+            for (ch in revisionChapters.take(2)) {
                 candidates.add(
                     AdaptiveNotification(
                         id = "rev_${ch.id}",
@@ -113,18 +234,35 @@ class AdaptiveNotificationEngine(private val prefs: PreferencesManager) {
             }
         }
 
-        // 3. Study Plan Recovery (Overdue or Pending Planner Tasks)
+        // 3. Study Plan & Syllabus Recovery Alert
         if (prefs.catPlanEnabled) {
+            if (isSyllabusBehind && syllabusBehindReasonEn.isNotBlank()) {
+                candidates.add(
+                    AdaptiveNotification(
+                        id = "plan_syllabus_behind",
+                        category = NotificationCategory.PLAN_RECOVERY,
+                        titleEn = "Syllabus Recovery Needed",
+                        titleBn = "সিলেবাস রিকভারি প্রয়োজন",
+                        descriptionEn = syllabusBehindReasonEn,
+                        descriptionBn = syllabusBehindReasonBn,
+                        priority = NotificationPriority.HIGH,
+                        timestamp = now,
+                        targetScreen = com.example.ui.ScreenDestination.SMART_PLANNER,
+                        sourceId = 0L
+                    )
+                )
+            }
+
             val pendingTasks = plannerTasks.filter { !it.isCompleted }
             if (pendingTasks.isNotEmpty()) {
                 candidates.add(
                     AdaptiveNotification(
                         id = "plan_recovery",
                         category = NotificationCategory.PLAN_RECOVERY,
-                        titleEn = "Study Plan Recovery",
-                        titleBn = "স্টাডি প্ল্যান আপডেট",
-                        descriptionEn = "You have ${pendingTasks.size} pending study tasks in your planner. Complete them to stay on track.",
-                        descriptionBn = "আপনার প্ল্যানারে ${pendingTasks.size}টি কাজ বাকি আছে। সময়মতো সম্পন্ন করুন।",
+                        titleEn = "Daily Study Planner",
+                        titleBn = "দৈনিক স্টাডি প্ল্যান",
+                        descriptionEn = "You have ${pendingTasks.size} pending study task${if (pendingTasks.size > 1) "s" else ""} in your planner. Complete them to maintain your study streak.",
+                        descriptionBn = "আপনার প্ল্যানারে ${pendingTasks.size}টি পড়া বাকি আছে। সিলেবাস এগিয়ে রাখতে সম্পন্ন করুন।",
                         priority = NotificationPriority.MEDIUM,
                         timestamp = now,
                         targetScreen = com.example.ui.ScreenDestination.SMART_PLANNER,

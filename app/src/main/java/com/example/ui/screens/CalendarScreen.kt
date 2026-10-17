@@ -213,15 +213,39 @@ fun CalendarScreen(
             } else {
                 // Admission Targets Cards List matching Screen 7
                 items(filteredAdmissions, key = { it.id }) { target ->
-                    val daysLeft = TimeUnit.MILLISECONDS.toDays(target.examDate - now).toInt()
+                    val daysUntilExam = TimeUnit.MILLISECONDS.toDays(target.examDate - now).toInt()
+                    val daysUntilDeadline = TimeUnit.MILLISECONDS.toDays(target.applicationDeadline - now).toInt()
 
-                    val (badgeBg, badgeFg) = when {
-                        daysLeft <= 40 -> if (isDarkTheme) AlertRed.copy(alpha = 0.2f) to AlertRed else AlertRedLight to AlertRed
-                        daysLeft <= 60 -> if (isDarkTheme) RoyalBlue.copy(alpha = 0.2f) to RoyalBlue else RoyalBlueLight to RoyalBlue
+                    val (examBadgeBg, examBadgeFg) = when {
+                        daysUntilExam <= 7 -> if (isDarkTheme) AlertRed.copy(alpha = 0.2f) to AlertRed else AlertRedLight to AlertRed
+                        daysUntilExam <= 30 -> if (isDarkTheme) RoyalBlue.copy(alpha = 0.2f) to RoyalBlue else RoyalBlueLight to RoyalBlue
                         else -> if (isDarkTheme) MintGreen.copy(alpha = 0.2f) to MintGreen else MintGreenLight to MintGreen
                     }
 
-                    val dateStr = AppStrings.formatDate(target.examDate, lang)
+                    val deadlineBadgeText = when {
+                        target.status == "APPLIED" || target.status == "ADMIT_DOWNLOADED" || target.status == "COMPLETED" ->
+                            if (lang == AppLanguage.BANGLA) "আবেদন সম্পন্ন" else "Application Submitted"
+                        daysUntilDeadline < 0 ->
+                            if (lang == AppLanguage.BANGLA) "আবেদনের মেয়াদ শেষ" else "Deadline Passed"
+                        daysUntilDeadline == 0 ->
+                            if (lang == AppLanguage.BANGLA) "আবেদনের শেষ দিন আজ!" else "Deadline Today!"
+                        else ->
+                            if (lang == AppLanguage.BANGLA) "আবেদনের বাকি ${AppStrings.toBengaliDigits(daysUntilDeadline.toString())} দিন" else "Apply within ${daysUntilDeadline}d"
+                    }
+
+                    val (deadlineBadgeBg, deadlineBadgeFg) = when {
+                        target.status == "APPLIED" || target.status == "ADMIT_DOWNLOADED" || target.status == "COMPLETED" ->
+                            (if (isDarkTheme) MintGreen.copy(alpha = 0.15f) else MintGreenLight) to MintGreen
+                        daysUntilDeadline < 0 ->
+                            (if (isDarkTheme) AlertRed.copy(alpha = 0.15f) else AlertRedLight) to AlertRed
+                        daysUntilDeadline <= 3 ->
+                            (if (isDarkTheme) AlertRed.copy(alpha = 0.2f) else AlertRedLight) to AlertRed
+                        else ->
+                            (if (isDarkTheme) Color(0xFFF59E0B).copy(alpha = 0.15f) else Color(0xFFFEF3C7)) to Color(0xFFD97706)
+                    }
+
+                    val examDateStr = AppStrings.formatDate(target.examDate, lang)
+                    val deadlineDateStr = AppStrings.formatDate(target.applicationDeadline, lang)
 
                     val statusLabel = when (target.status) {
                         "APPLIED" -> AppStrings.statusApplied(lang)
@@ -230,115 +254,171 @@ fun CalendarScreen(
                     }
 
                     StudyHubCard(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("admission_item_${target.id}"),
                         backgroundColor = cardBg,
                         borderColor = borderCol,
                         onClick = { viewModel.cycleAdmissionStatus(target) }
                     ) {
-                        Row(
+                        Column(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 16.dp, vertical = 14.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
+                                .padding(16.dp)
                         ) {
                             Row(
-                                modifier = Modifier.weight(1f),
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(42.dp)
-                                        .background(
-                                            if (isDarkTheme) RoyalBlue.copy(alpha = 0.2f) else RoyalBlueLight,
-                                            RoundedCornerShape(12.dp)
-                                        ),
-                                    contentAlignment = Alignment.Center
+                                Row(
+                                    modifier = Modifier.weight(1f),
+                                    verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Icon(
-                                        imageVector = Icons.Default.AccountBalance,
-                                        contentDescription = null,
-                                        tint = RoyalBlue,
-                                        modifier = Modifier.size(22.dp)
-                                    )
+                                    Box(
+                                        modifier = Modifier
+                                            .size(42.dp)
+                                            .background(
+                                                if (isDarkTheme) RoyalBlue.copy(alpha = 0.2f) else RoyalBlueLight,
+                                                RoundedCornerShape(12.dp)
+                                            ),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.AccountBalance,
+                                            contentDescription = null,
+                                            tint = RoyalBlue,
+                                            modifier = Modifier.size(22.dp)
+                                        )
+                                    }
+
+                                    Spacer(modifier = Modifier.width(12.dp))
+
+                                    Column {
+                                        Text(
+                                            text = target.universityName,
+                                            style = MaterialTheme.typography.bodyLarge.copy(
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 15.sp
+                                            ),
+                                            color = textPrimary
+                                        )
+                                        Spacer(modifier = Modifier.height(2.dp))
+                                        Text(
+                                            text = "${target.unit} • $statusLabel",
+                                            fontSize = 12.sp,
+                                            color = textSecondary
+                                        )
+                                    }
                                 }
 
-                                Spacer(modifier = Modifier.width(12.dp))
-
-                                Column {
-                                    Text(
-                                        text = target.universityName,
-                                        style = MaterialTheme.typography.bodyLarge.copy(
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 15.sp
-                                        ),
-                                        color = textPrimary
-                                    )
-                                    Spacer(modifier = Modifier.height(2.dp))
-                                    Text(
-                                        text = "${target.unit} • $statusLabel",
-                                        fontSize = 12.sp,
-                                        color = textSecondary
-                                    )
-                                    Spacer(modifier = Modifier.height(3.dp))
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    IconButton(
+                                        onClick = { targetToEdit = target },
+                                        modifier = Modifier.size(32.dp).testTag("edit_admission_${target.id}")
+                                    ) {
                                         Icon(
-                                            imageVector = Icons.Default.CalendarToday,
-                                            contentDescription = null,
-                                            tint = textSecondary,
-                                            modifier = Modifier.size(11.dp)
+                                            imageVector = Icons.Default.Edit,
+                                            contentDescription = AppStrings.editAction(lang),
+                                            tint = textSecondary.copy(alpha = 0.6f),
+                                            modifier = Modifier.size(16.dp)
                                         )
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        Text(
-                                            text = dateStr,
-                                            fontSize = 11.sp,
-                                            color = textSecondary
+                                    }
+
+                                    Spacer(modifier = Modifier.width(2.dp))
+
+                                    IconButton(
+                                        onClick = { targetToDelete = target },
+                                        modifier = Modifier.size(32.dp).testTag("delete_admission_${target.id}")
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Delete,
+                                            contentDescription = AppStrings.deleteAction(lang),
+                                            tint = textSecondary.copy(alpha = 0.5f),
+                                            modifier = Modifier.size(16.dp)
                                         )
                                     }
                                 }
                             }
 
-                            Row(verticalAlignment = Alignment.CenterVertically) {
+                            Spacer(modifier = Modifier.height(10.dp))
+
+                            // Badges Row: Application Deadline Status & Exam Countdown
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
                                 Surface(
-                                    shape = RoundedCornerShape(10.dp),
-                                    color = badgeBg
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = deadlineBadgeBg
                                 ) {
                                     Text(
-                                        text = AppStrings.daysRemaining(daysLeft, lang),
+                                        text = deadlineBadgeText,
                                         fontSize = 11.sp,
                                         fontWeight = FontWeight.Bold,
-                                        color = badgeFg,
-                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                                        color = deadlineBadgeFg,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                                     )
                                 }
 
-                                Spacer(modifier = Modifier.width(4.dp))
-
-                                IconButton(
-                                    onClick = { targetToEdit = target },
-                                    modifier = Modifier.size(32.dp)
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = examBadgeBg
                                 ) {
+                                    Text(
+                                        text = if (daysUntilExam >= 0)
+                                            AppStrings.daysRemaining(daysUntilExam, lang)
+                                        else
+                                            (if (lang == AppLanguage.BANGLA) "পরীক্ষা শেষ" else "Exam Over"),
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = examBadgeFg,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                    )
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            // Dates & Notes Row
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
                                     Icon(
-                                        imageVector = Icons.Default.Edit,
-                                        contentDescription = AppStrings.editAction(lang),
-                                        tint = textSecondary.copy(alpha = 0.6f),
-                                        modifier = Modifier.size(16.dp)
+                                        imageVector = Icons.Default.CalendarToday,
+                                        contentDescription = null,
+                                        tint = textSecondary,
+                                        modifier = Modifier.size(11.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = "${if (lang == AppLanguage.BANGLA) "পরীক্ষা:" else "Exam:"} $examDateStr",
+                                        fontSize = 11.sp,
+                                        color = textSecondary
                                     )
                                 }
 
-                                Spacer(modifier = Modifier.width(4.dp))
-
-                                IconButton(
-                                    onClick = { targetToDelete = target },
-                                    modifier = Modifier.size(32.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Delete,
-                                        contentDescription = AppStrings.deleteAction(lang),
-                                        tint = textSecondary.copy(alpha = 0.5f),
-                                        modifier = Modifier.size(16.dp)
+                                if (target.websiteUrl.isNotBlank()) {
+                                    Text(
+                                        text = target.websiteUrl,
+                                        fontSize = 11.sp,
+                                        color = RoyalBlue,
+                                        fontWeight = FontWeight.Medium
                                     )
                                 }
+                            }
+
+                            if (target.notes.isNotBlank()) {
+                                Spacer(modifier = Modifier.height(6.dp))
+                                Text(
+                                    text = target.notes,
+                                    fontSize = 11.sp,
+                                    color = textSecondary.copy(alpha = 0.8f),
+                                    maxLines = 2
+                                )
                             }
                         }
                     }

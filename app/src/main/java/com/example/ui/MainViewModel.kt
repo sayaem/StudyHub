@@ -1,5 +1,6 @@
 package com.example.ui
 
+import android.app.AppOpsManager
 import android.app.Application
 import android.content.Context
 import android.os.Build
@@ -12,6 +13,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.data.local.StudyHubDatabase
 import com.example.data.model.AdmissionTargetEntity
 import com.example.data.model.ChapterEntity
+import com.example.data.model.FocusScheduleEntity
 import com.example.data.model.PlannerTaskEntity
 import com.example.data.model.RevisionItemEntity
 import com.example.data.model.StudySessionEntity
@@ -89,6 +91,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     // User Profile
     private val _userName = MutableStateFlow(prefs.userName)
     val userName: StateFlow<String> = _userName.asStateFlow()
+
+    private val _isOnboardingCompleted = MutableStateFlow(prefs.isOnboardingCompleted)
+    val isOnboardingCompleted: StateFlow<Boolean> = _isOnboardingCompleted.asStateFlow()
+
+    fun completeOnboarding(studyGoalHours: Int, focusMinutes: Int, breakMinutes: Int) {
+        prefs.onboardingStudyGoalHours = studyGoalHours
+        prefs.dailyAvailableStudyHours = studyGoalHours
+        prefs.onboardingFocusMinutes = focusMinutes
+        prefs.onboardingBreakMinutes = breakMinutes
+        prefs.isOnboardingCompleted = true
+        _isOnboardingCompleted.value = true
+    }
 
     fun updateUserName(name: String) {
         val trimmed = name.trim().ifBlank { "Arafat" }
@@ -238,20 +252,42 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val sessions: StateFlow<List<StudySessionEntity>> = repository.allSessions
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    // Study Intelligence & Preferences State
+    private val _dailyAvailableStudyHours = MutableStateFlow(prefs.dailyAvailableStudyHours)
+    val dailyAvailableStudyHours: StateFlow<Int> = _dailyAvailableStudyHours.asStateFlow()
+
+    fun setDailyAvailableHours(hours: Int) {
+        val clamped = hours.coerceIn(1, 14)
+        prefs.dailyAvailableStudyHours = clamped
+        _dailyAvailableStudyHours.value = clamped
+    }
+
+    private val _preferredStudyPeriod = MutableStateFlow(prefs.preferredStudyPeriod)
+    val preferredStudyPeriod: StateFlow<String> = _preferredStudyPeriod.asStateFlow()
+
+    fun setPreferredStudyPeriod(period: String) {
+        prefs.preferredStudyPeriod = period
+        _preferredStudyPeriod.value = period
+    }
+
+    private val _weeklyStudyHoursGoal = MutableStateFlow(prefs.weeklyStudyHoursGoal)
+    val weeklyStudyHoursGoal: StateFlow<Int> = _weeklyStudyHoursGoal.asStateFlow()
+
+    private val _weeklyChaptersGoal = MutableStateFlow(prefs.weeklyChaptersGoal)
+    val weeklyChaptersGoal: StateFlow<Int> = _weeklyChaptersGoal.asStateFlow()
+
+    fun setWeeklyGoals(hours: Int, chapters: Int) {
+        prefs.weeklyStudyHoursGoal = hours.coerceIn(1, 80)
+        prefs.weeklyChaptersGoal = chapters.coerceIn(1, 50)
+        _weeklyStudyHoursGoal.value = prefs.weeklyStudyHoursGoal
+        _weeklyChaptersGoal.value = prefs.weeklyChaptersGoal
+    }
+
     val admissions: StateFlow<List<AdmissionTargetEntity>> = repository.allAdmissions
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val plannerTasks: StateFlow<List<PlannerTaskEntity>> = repository.allPlannerTasks
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-
-    val notifications: StateFlow<List<com.example.domain.notification.AdaptiveNotification>> = combine(
-        admissions,
-        chapters,
-        plannerTasks,
-        _notificationTrigger
-    ) { adm, ch, plan, _ ->
-        notificationEngine.evaluateNotifications(adm, ch, plan)
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val revisionItems: StateFlow<List<RevisionItemEntity>> = repository.allRevisions
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -262,46 +298,184 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val mistakes: StateFlow<List<com.example.data.model.MistakeEntity>> = repository.allMistakes
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    // Syllabus Filter State
-    private val _selectedSubjectFilter = MutableStateFlow<Long?>(null)
-    val selectedSubjectFilter: StateFlow<Long?> = _selectedSubjectFilter.asStateFlow()
+    private val intelligenceEngine = com.example.domain.intelligence.StudyIntelligenceEngine()
 
-    private val _syllabusStatusFilter = MutableStateFlow(SyllabusFilter.ALL)
-    val syllabusStatusFilter: StateFlow<SyllabusFilter> = _syllabusStatusFilter.asStateFlow()
+    // 1. Smart Syllabus Recovery Engine Flow
+    val syllabusRecovery: StateFlow<com.example.domain.intelligence.SyllabusRecoveryReport> = combine(
+        chapters,
+        subjects,
+        admissions,
+        dailyAvailableStudyHours
+    ) { ch, subs, adm, availHours ->
+        intelligenceEngine.calculateSyllabusRecovery(ch, subs, adm, availHours)
+    }.stateIn(
+        viewModelScope,
+        SharingStarted.WhileSubscribed(5000),
+        com.example.domain.intelligence.SyllabusRecoveryReport(
+            0, 0, 0, 0, null, null, 4, 0f, 0f,
+            com.example.domain.intelligence.RecoveryStatus.NO_EXAM_SET,
+            false, true, "", "", "", "", emptyList()
+        )
+    )
 
-    fun setSubjectFilter(subjectId: Long?) {
-        _selectedSubjectFilter.value = subjectId
+    // 2. Adaptive Notifications Flow
+    val notifications: StateFlow<List<com.example.domain.notification.AdaptiveNotification>> = combine(
+        combine(admissions, chapters, plannerTasks, ::Triple),
+        combine(revisionItems, mistakes, ::Pair),
+        syllabusRecovery,
+        _notificationTrigger
+    ) { (adm, ch, plan), (revs, mists), recovery, _ ->
+        notificationEngine.evaluateNotifications(
+            admissions = adm,
+            chapters = ch,
+            plannerTasks = plan,
+            revisions = revs,
+            mistakes = mists,
+            isSyllabusBehind = recovery.isBehind,
+            syllabusBehindReasonEn = recovery.recommendationEn,
+            syllabusBehindReasonBn = recovery.recommendationBn
+        )
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    // 3. Dismissible Study Insights Flow
+    private val _dismissedInsightsTrigger = MutableStateFlow(System.currentTimeMillis())
+
+    val studyInsights: StateFlow<List<com.example.domain.intelligence.StudyInsight>> = combine(
+        combine(chapters, sessions, admissions, ::Triple),
+        revisionItems,
+        weeklyStudyHoursGoal,
+        _dismissedInsightsTrigger
+    ) { (ch, ses, adm), revs, goalHours, _ ->
+        val raw = intelligenceEngine.generateInsights(ch, ses, adm, revs, goalHours)
+        raw.filter { !prefs.isInsightDismissed(it.id) }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    fun dismissStudyInsight(id: String) {
+        prefs.dismissInsight(id)
+        _dismissedInsightsTrigger.value = System.currentTimeMillis()
     }
 
-    fun setStatusFilter(filter: SyllabusFilter) {
-        _syllabusStatusFilter.value = filter
+    // 4. Weekly Goals & Review Flow
+    val weeklyReview: StateFlow<com.example.domain.intelligence.WeeklyReviewReport> = combine(
+        combine(sessions, chapters, subjects, ::Triple),
+        combine(revisionItems, plannerTasks, ::Pair),
+        weeklyStudyHoursGoal,
+        weeklyChaptersGoal
+    ) { (ses, ch, subs), (revs, tasks), hoursGoal, chGoal ->
+        intelligenceEngine.calculateWeeklyReview(
+            sessions = ses,
+            chapters = ch,
+            subjects = subs,
+            revisions = revs,
+            plannerTasks = tasks,
+            weeklyStudyHoursGoal = hoursGoal,
+            weeklyChaptersGoal = chGoal
+        )
+    }.stateIn(
+        viewModelScope,
+        SharingStarted.WhileSubscribed(5000),
+        com.example.domain.intelligence.WeeklyReviewReport(
+            "", "", 0L, 20 * 3600L, 20, 0, 5, 0L, null,
+            emptyList(), 0, 0, emptyList(), emptyList()
+        )
+    )
+
+    // 5. Admission Performance Analytics Flow
+    val mockTestTargetScorePercentage = MutableStateFlow(prefs.mockTestTargetScorePercentage)
+    fun setMockTestTargetScorePercentage(pct: Float) {
+        val clamped = pct.coerceIn(10f, 100f)
+        prefs.mockTestTargetScorePercentage = clamped
+        mockTestTargetScorePercentage.value = clamped
     }
 
-    // Smart Planner State
+    val admissionAnalytics: StateFlow<com.example.domain.intelligence.AdmissionAnalyticsReport> = combine(
+        combine(mockTests, mistakes, subjects, ::Triple),
+        chapters,
+        mockTestTargetScorePercentage
+    ) { (tests, mists, subs), chaps, targetPct ->
+        intelligenceEngine.calculateAdmissionAnalytics(
+            mockTests = tests,
+            mistakes = mists,
+            subjects = subs,
+            chapters = chaps,
+            targetScorePct = targetPct.toDouble()
+        )
+    }.stateIn(
+        viewModelScope,
+        SharingStarted.WhileSubscribed(5000),
+        com.example.domain.intelligence.AdmissionAnalyticsReport(
+            0, 0.0, 0.0, 0.0, 0.0, null, null, null, null,
+            80.0, null, emptyList(), null, null, emptyList(),
+            emptyList(), null, 0, 0, 0, false
+        )
+    )
+
+    // Smart Planner State & Suggestions
     private val _plannerTimeRange = MutableStateFlow("TODAY")
     val plannerTimeRange: StateFlow<String> = _plannerTimeRange.asStateFlow()
 
-    private val intelligenceEngine = com.example.domain.intelligence.StudyIntelligenceEngine()
-
-    val syllabusRecovery: StateFlow<com.example.domain.intelligence.SyllabusRecoveryReport> = combine(
-        chapters,
-        admissions
-    ) { ch, adm ->
-        intelligenceEngine.calculateSyllabusRecovery(ch, adm)
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), com.example.domain.intelligence.SyllabusRecoveryReport(0, 0, 0, null, 0f, false, "", ""))
-
-    val studyInsights: StateFlow<List<com.example.domain.intelligence.StudyInsight>> = combine(
-        chapters,
-        sessions,
-        admissions
-    ) { ch, ses, adm ->
-        intelligenceEngine.generateInsights(ch, ses, adm)
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-
-
+    private val _suggestedDailyPlan = MutableStateFlow<List<com.example.domain.intelligence.DailyPlanSuggestion>>(emptyList())
+    val suggestedDailyPlan: StateFlow<List<com.example.domain.intelligence.DailyPlanSuggestion>> = _suggestedDailyPlan.asStateFlow()
 
     fun setPlannerTimeRange(range: String) {
         _plannerTimeRange.value = range
+        _suggestedDailyPlan.value = emptyList()
+    }
+
+    fun generateSuggestedPlan(dateCategory: String = _plannerTimeRange.value) {
+        val suggestions = intelligenceEngine.generateDeterministicDailyPlan(
+            subjects = subjects.value,
+            chapters = chapters.value,
+            revisions = revisionItems.value,
+            admissions = admissions.value,
+            existingTasks = plannerTasks.value.filter { it.dateCategory == dateCategory },
+            mistakes = mistakes.value,
+            mockTests = mockTests.value,
+            dateCategory = dateCategory,
+            dailyAvailableHours = dailyAvailableStudyHours.value,
+            preferredStudyPeriod = preferredStudyPeriod.value
+        )
+        _suggestedDailyPlan.value = suggestions
+    }
+
+    fun clearSuggestedPlan() {
+        _suggestedDailyPlan.value = emptyList()
+    }
+
+    fun acceptSuggestedPlan(dateCategory: String = _plannerTimeRange.value) {
+        val currentSuggestions = _suggestedDailyPlan.value
+        if (currentSuggestions.isEmpty()) return
+
+        viewModelScope.launch {
+            val existingInDate = plannerTasks.value.filter { it.dateCategory == dateCategory }
+
+            // Delete only uncompleted, auto-generated tasks for this category, strictly preserving completed tasks and custom user tasks!
+            for (task in existingInDate) {
+                if (!task.isCompleted && task.chapterId != null) {
+                    repository.deletePlannerTask(task.id)
+                }
+            }
+
+            // Convert suggestions to PlannerTaskEntity
+            val newEntities = currentSuggestions.map { sugg ->
+                PlannerTaskEntity(
+                    timeSlot = sugg.timeSlot,
+                    subjectTitle = sugg.subjectTitle,
+                    topicTitle = sugg.topicTitle,
+                    dateCategory = sugg.dateCategory,
+                    isCompleted = false,
+                    colorHex = sugg.colorHex,
+                    subjectId = sugg.subjectId,
+                    chapterId = sugg.chapterId
+                )
+            }
+
+            if (newEntities.isNotEmpty()) {
+                repository.insertPlannerTasks(newEntities)
+            }
+
+            _suggestedDailyPlan.value = emptyList()
+        }
     }
 
     fun togglePlannerTask(taskId: Long, currentCompleted: Boolean) {
@@ -332,43 +506,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun generateSmartPlanForCategory(category: String) {
-        viewModelScope.launch {
-            val allChaps = chapters.value
-            val allSubs = subjects.value.associateBy { it.id }
-
-            // Pick unfinished or revision chapters
-            val candidates = allChaps.filter { it.status != "COMPLETED" || it.isRevisionNeeded }
-                .sortedWith(
-                    compareByDescending<ChapterEntity> { it.priority == "HIGH" }
-                        .thenByDescending { it.isRevisionNeeded }
-                        .thenByDescending { it.status == "IN_PROGRESS" }
-                )
-
-            val timeSlots = listOf("08:00 - 09:30", "10:00 - 11:30", "02:00 - 03:30", "04:30 - 06:00")
-            val newTasks = candidates.take(4).mapIndexed { idx, ch ->
-                val subName = allSubs[ch.subjectId]?.nameEn ?: "Subject"
-                val slot = timeSlots.getOrElse(idx) { "07:00 - 08:30" }
-                val color = if (ch.isRevisionNeeded) "#10B981" else "#2563EB"
-
-                PlannerTaskEntity(
-                    timeSlot = slot,
-                    subjectTitle = subName,
-                    topicTitle = ch.titleEn,
-                    dateCategory = category,
-                    isCompleted = false,
-                    colorHex = color,
-                    subjectId = ch.subjectId,
-                    chapterId = ch.id
-                )
-            }
-
-            if (newTasks.isNotEmpty()) {
-                repository.insertPlannerTasks(newTasks)
-            }
-        }
+        generateSuggestedPlan(category)
+        acceptSuggestedPlan(category)
     }
 
-    // Revision Tracker State
+    // Spaced Revision System Actions
     private val _revisionTab = MutableStateFlow("PENDING")
     val revisionTab: StateFlow<String> = _revisionTab.asStateFlow()
 
@@ -378,23 +520,57 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun addRevisionItem(title: String, subjectName: String, totalCount: Int) {
         viewModelScope.launch {
+            val now = System.currentTimeMillis()
+            val nextDate = intelligenceEngine.calculateNextRevisionDate(0, now)
             repository.insertRevision(
                 RevisionItemEntity(
                     title = title.ifBlank { "New Topic" },
                     subjectName = subjectName.ifBlank { "General" },
                     completedCount = 0,
                     totalCount = totalCount.coerceAtLeast(1),
-                    isCompleted = false
+                    isCompleted = false,
+                    lastRevisedAt = now,
+                    nextRevisionDate = nextDate
                 )
             )
         }
     }
 
-    fun incrementRevision(id: Long, currentCompleted: Int, total: Int) {
+    fun markRevisionStepCompleted(id: Long, currentCompleted: Int, total: Int) {
         viewModelScope.launch {
             val nextCompleted = currentCompleted + 1
-            val completed = nextCompleted >= total
-            repository.updateRevisionProgress(id, nextCompleted, completed)
+            val isDone = nextCompleted >= total
+            val nextDate = if (isDone) System.currentTimeMillis() else intelligenceEngine.calculateNextRevisionDate(nextCompleted)
+            repository.updateRevisionProgressAndNextDate(id, nextCompleted, isDone, nextDate)
+        }
+    }
+
+    fun postponeRevision(id: Long, days: Int = 1) {
+        viewModelScope.launch {
+            repository.postponeRevision(id, days)
+        }
+    }
+
+    fun scheduleSpacedRevisionForChapter(chapter: ChapterEntity, subjectName: String) {
+        viewModelScope.launch {
+            val existing = revisionItems.value.any { it.chapterId == chapter.id }
+            if (!existing) {
+                val now = System.currentTimeMillis()
+                val nextDate = intelligenceEngine.calculateNextRevisionDate(0, now)
+                repository.insertRevision(
+                    RevisionItemEntity(
+                        title = chapter.titleEn,
+                        subjectName = subjectName,
+                        completedCount = 0,
+                        totalCount = 4,
+                        isCompleted = false,
+                        subjectId = chapter.subjectId,
+                        chapterId = chapter.id,
+                        lastRevisedAt = now,
+                        nextRevisionDate = nextDate
+                    )
+                )
+            }
         }
     }
 
@@ -452,6 +628,54 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             pendingRevisionsCount = revisionCount
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), StudyStats())
+
+    val focusSchedules: StateFlow<List<FocusScheduleEntity>> = repository.allFocusSchedules
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    fun addFocusSchedule(days: List<Int>, startMin: Int, endMin: Int, apps: List<String>) {
+        viewModelScope.launch {
+            repository.insertFocusSchedule(
+                FocusScheduleEntity(
+                    daysOfWeek = days,
+                    startTime = startMin,
+                    endTime = endMin,
+                    restrictedApps = apps,
+                    isEnabled = true
+                )
+            )
+        }
+    }
+
+    fun updateFocusSchedule(schedule: FocusScheduleEntity) {
+        viewModelScope.launch {
+            repository.updateFocusSchedule(schedule)
+        }
+    }
+
+    fun deleteFocusSchedule(schedule: FocusScheduleEntity) {
+        viewModelScope.launch {
+            repository.deleteFocusSchedule(schedule)
+        }
+    }
+
+    fun hasUsageAccessPermission(): Boolean {
+        val context = getApplication<Application>()
+        val appOps = context.getSystemService(Context.APP_OPS_SERVICE) as AppOpsManager
+        val mode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            appOps.unsafeCheckOpNoThrow(
+                AppOpsManager.OPSTR_GET_USAGE_STATS,
+                android.os.Process.myUid(),
+                context.packageName
+            )
+        } else {
+            appOps.checkOpNoThrow(
+                AppOpsManager.OPSTR_GET_USAGE_STATS,
+                android.os.Process.myUid(),
+                context.packageName
+            )
+        }
+        return mode == AppOpsManager.MODE_ALLOWED
+    }
 
     // Robust Focus Timer with Timestamp-Based Tracking & Recovery
     private val _timerState = MutableStateFlow(
@@ -794,6 +1018,127 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         applicationDeadline = now + (deadlineDays * dayMs),
                         examDate = now + (examDays * dayMs),
                         notes = notes
+                    )
+                )
+            }
+        }
+    }
+
+    // Mock Test Actions
+    fun addMockTest(
+        testName: String,
+        examProvider: String,
+        subjectId: Long?,
+        testDate: Long,
+        totalMarks: Double,
+        obtainedMarks: Double,
+        negativeMarks: Double = 0.0,
+        durationMinutes: Int? = null
+    ) {
+        viewModelScope.launch {
+            repository.insertMockTest(
+                com.example.data.model.MockTestEntity(
+                    testName = testName.ifBlank { "Mock Test" },
+                    examProvider = examProvider.ifBlank { "Self" },
+                    subjectId = subjectId,
+                    testDate = testDate,
+                    totalMarks = totalMarks.coerceAtLeast(1.0),
+                    obtainedMarks = obtainedMarks,
+                    negativeMarks = negativeMarks.coerceAtLeast(0.0),
+                    durationMinutes = durationMinutes
+                )
+            )
+        }
+    }
+
+    fun updateMockTest(
+        id: Long,
+        testName: String,
+        examProvider: String,
+        subjectId: Long?,
+        testDate: Long,
+        totalMarks: Double,
+        obtainedMarks: Double,
+        negativeMarks: Double = 0.0,
+        durationMinutes: Int? = null
+    ) {
+        viewModelScope.launch {
+            repository.updateMockTest(
+                com.example.data.model.MockTestEntity(
+                    id = id,
+                    testName = testName.ifBlank { "Mock Test" },
+                    examProvider = examProvider.ifBlank { "Self" },
+                    subjectId = subjectId,
+                    testDate = testDate,
+                    totalMarks = totalMarks.coerceAtLeast(1.0),
+                    obtainedMarks = obtainedMarks,
+                    negativeMarks = negativeMarks.coerceAtLeast(0.0),
+                    durationMinutes = durationMinutes
+                )
+            )
+        }
+    }
+
+    fun deleteMockTest(test: com.example.data.model.MockTestEntity) {
+        viewModelScope.launch {
+            repository.deleteMockTest(test)
+        }
+    }
+
+    // Mistake Book Actions
+    fun addMistake(
+        subjectId: Long?,
+        chapterId: Long?,
+        questionDescription: String,
+        mistakeDescription: String,
+        correctApproach: String,
+        mistakeCategory: String
+    ) {
+        viewModelScope.launch {
+            repository.insertMistake(
+                com.example.data.model.MistakeEntity(
+                    subjectId = subjectId,
+                    chapterId = chapterId,
+                    questionDescription = questionDescription.ifBlank { "Question" },
+                    mistakeDescription = mistakeDescription.ifBlank { "Mistake" },
+                    correctApproach = correctApproach.ifBlank { "Solution" },
+                    mistakeCategory = mistakeCategory.ifBlank { "Conceptual" },
+                    status = "NEW"
+                )
+            )
+        }
+    }
+
+    fun updateMistake(mistake: com.example.data.model.MistakeEntity) {
+        viewModelScope.launch {
+            repository.updateMistake(mistake)
+        }
+    }
+
+    fun deleteMistake(mistake: com.example.data.model.MistakeEntity) {
+        viewModelScope.launch {
+            repository.deleteMistake(mistake)
+        }
+    }
+
+    fun reviewMistake(mistake: com.example.data.model.MistakeEntity, isResolved: Boolean, addToSpacedRevision: Boolean) {
+        viewModelScope.launch {
+            val newStatus = if (isResolved) "RESOLVED" else "REVIEWED"
+            repository.updateMistake(mistake.copy(status = newStatus))
+
+            if (addToSpacedRevision && !isResolved) {
+                val sub = subjects.value.find { it.id == mistake.subjectId }
+                val subName = sub?.nameEn ?: "General"
+                repository.insertRevision(
+                    com.example.data.model.RevisionItemEntity(
+                        title = "Mistake Review: ${mistake.questionDescription.take(30)}",
+                        subjectName = subName,
+                        subjectId = mistake.subjectId,
+                        chapterId = mistake.chapterId,
+                        completedCount = 0,
+                        totalCount = 4,
+                        isCompleted = false,
+                        nextRevisionDate = intelligenceEngine.calculateNextRevisionDate(0)
                     )
                 )
             }

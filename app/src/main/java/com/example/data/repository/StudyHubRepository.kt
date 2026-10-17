@@ -10,6 +10,7 @@ import com.example.data.model.StudySessionEntity
 import com.example.data.model.SubjectEntity
 import com.example.data.model.MockTestEntity
 import com.example.data.model.MistakeEntity
+import com.example.data.model.FocusScheduleEntity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.withContext
@@ -25,6 +26,7 @@ class StudyHubRepository(private val database: StudyHubDatabase) {
     val allRevisions: Flow<List<RevisionItemEntity>> = database.revisionItemDao().getAllRevisions()
     val allMockTests: Flow<List<MockTestEntity>> = database.mockTestDao().getAllMockTests()
     val allMistakes: Flow<List<MistakeEntity>> = database.mistakeDao().getAllMistakes()
+    val allFocusSchedules: Flow<List<FocusScheduleEntity>> = database.focusScheduleDao().getAllSchedules()
 
     fun getTasksByCategory(category: String): Flow<List<PlannerTaskEntity>> =
         database.plannerTaskDao().getTasksByCategory(category)
@@ -148,6 +150,21 @@ class StudyHubRepository(private val database: StudyHubDatabase) {
         )
     }
 
+    suspend fun updateRevisionProgressAndNextDate(id: Long, completedCount: Int, isCompleted: Boolean, nextDate: Long) = withContext(Dispatchers.IO) {
+        database.revisionItemDao().updateProgressAndNextDate(
+            id = id,
+            completed = completedCount,
+            isCompleted = isCompleted,
+            timestamp = System.currentTimeMillis(),
+            nextDate = nextDate
+        )
+    }
+
+    suspend fun postponeRevision(id: Long, daysToPostpone: Int = 1) = withContext(Dispatchers.IO) {
+        val nextDate = System.currentTimeMillis() + (daysToPostpone * 86_400_000L)
+        database.revisionItemDao().postponeRevision(id, nextDate)
+    }
+
     suspend fun deleteRevision(id: Long) = withContext(Dispatchers.IO) {
         database.revisionItemDao().deleteRevisionById(id)
     }
@@ -155,6 +172,10 @@ class StudyHubRepository(private val database: StudyHubDatabase) {
     // Mock Tests
     suspend fun insertMockTest(test: MockTestEntity): Long = withContext(Dispatchers.IO) {
         database.mockTestDao().insertMockTest(test)
+    }
+
+    suspend fun updateMockTest(test: MockTestEntity) = withContext(Dispatchers.IO) {
+        database.mockTestDao().updateMockTest(test)
     }
 
     suspend fun deleteMockTest(test: MockTestEntity) = withContext(Dispatchers.IO) {
@@ -172,6 +193,19 @@ class StudyHubRepository(private val database: StudyHubDatabase) {
 
     suspend fun deleteMistake(mistake: MistakeEntity) = withContext(Dispatchers.IO) {
         database.mistakeDao().deleteMistake(mistake)
+    }
+
+    // Focus Schedules
+    suspend fun insertFocusSchedule(schedule: FocusScheduleEntity): Long = withContext(Dispatchers.IO) {
+        database.focusScheduleDao().insertSchedule(schedule)
+    }
+
+    suspend fun updateFocusSchedule(schedule: FocusScheduleEntity) = withContext(Dispatchers.IO) {
+        database.focusScheduleDao().updateSchedule(schedule)
+    }
+
+    suspend fun deleteFocusSchedule(schedule: FocusScheduleEntity) = withContext(Dispatchers.IO) {
+        database.focusScheduleDao().deleteSchedule(schedule)
     }
 
     suspend fun clearAllData() = withContext(Dispatchers.IO) {

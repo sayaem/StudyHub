@@ -24,14 +24,20 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.CalendarToday
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Eco
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.filled.WarningAmber
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
@@ -39,6 +45,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -51,9 +58,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.example.data.model.PlannerTaskEntity
+import com.example.domain.intelligence.RecoveryStatus
 import com.example.ui.MainViewModel
 import com.example.ui.components.StudyHubCard
+import com.example.ui.theme.AlertRed
 import com.example.ui.theme.DarkBorder
 import com.example.ui.theme.DarkMidnightSurface
 import com.example.ui.theme.DarkTextMuted
@@ -80,8 +88,13 @@ fun SmartPlannerScreen(
 ) {
     val timeRange by viewModel.plannerTimeRange.collectAsStateWithLifecycle()
     val allTasks by viewModel.plannerTasks.collectAsStateWithLifecycle()
+    val recoveryReport by viewModel.syllabusRecovery.collectAsStateWithLifecycle()
+    val suggestedPlan by viewModel.suggestedDailyPlan.collectAsStateWithLifecycle()
+    val availableHours by viewModel.dailyAvailableStudyHours.collectAsStateWithLifecycle()
+    val studyPeriod by viewModel.preferredStudyPeriod.collectAsStateWithLifecycle()
 
     var showAddTaskDialog by remember { mutableStateOf(false) }
+    var showAvailabilityDialog by remember { mutableStateOf(false) }
 
     val filteredTasks = allTasks.filter { it.dateCategory == timeRange }
     val completedCount = filteredTasks.count { it.isCompleted }
@@ -145,12 +158,127 @@ fun SmartPlannerScreen(
                     )
                 }
 
-                IconButton(onClick = { showAddTaskDialog = true }) {
-                    Icon(
-                        imageVector = Icons.Default.Add,
-                        contentDescription = AppStrings.addTask(lang),
-                        tint = RoyalBlue
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = { showAvailabilityDialog = true }) {
+                        Icon(
+                            imageVector = Icons.Default.Tune,
+                            contentDescription = "Preferences",
+                            tint = textSecondary
+                        )
+                    }
+                    IconButton(onClick = { showAddTaskDialog = true }) {
+                        Icon(
+                            imageVector = Icons.Default.Add,
+                            contentDescription = AppStrings.addTask(lang),
+                            tint = RoyalBlue
+                        )
+                    }
+                }
+            }
+        }
+
+        // 1. Smart Syllabus Recovery Engine Card
+        item {
+            val statusColor = when (recoveryReport.recoveryStatus) {
+                RecoveryStatus.ON_TRACK -> MintGreen
+                RecoveryStatus.MODERATE_BEHIND -> Color(0xFFF59E0B)
+                RecoveryStatus.CRITICALLY_BEHIND -> AlertRed
+                RecoveryStatus.NO_EXAM_SET -> RoyalBlue
+                RecoveryStatus.COMPLETED -> MintGreen
+            }
+
+            StudyHubCard(
+                modifier = Modifier.fillMaxWidth(),
+                backgroundColor = cardBg,
+                borderColor = if (recoveryReport.isBehind) statusColor.copy(alpha = 0.5f) else borderCol
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier
+                                    .size(8.dp)
+                                    .background(statusColor, CircleShape)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = if (lang == AppLanguage.BANGLA) recoveryReport.headlineBn else recoveryReport.headlineEn,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 14.sp,
+                                color = textPrimary
+                            )
+                        }
+
+                        if (recoveryReport.nearestExamDays != null) {
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = statusColor.copy(alpha = 0.15f)
+                            ) {
+                                Text(
+                                    text = if (lang == AppLanguage.BANGLA)
+                                        "${AppStrings.toBengaliDigits(recoveryReport.nearestExamDays.toString())} দিন বাকি"
+                                    else
+                                        "${recoveryReport.nearestExamDays}d left",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = statusColor,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Text(
+                        text = if (lang == AppLanguage.BANGLA) recoveryReport.recommendationBn else recoveryReport.recommendationEn,
+                        fontSize = 12.sp,
+                        color = textSecondary,
+                        lineHeight = 17.sp
                     )
+
+                    // Prioritized recovery chapters if behind
+                    if (recoveryReport.isBehind && recoveryReport.prioritizedChapters.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Text(
+                            text = if (lang == AppLanguage.BANGLA) "রিকভারির জন্য শীর্ষ অগ্রাধিকার:" else "Priority Recovery Focus:",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = textPrimary
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
+                        recoveryReport.prioritizedChapters.take(3).forEach { ch ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 3.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(4.dp)
+                                        .background(RoyalBlue, CircleShape)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "${ch.subjectNameEn}: ${ch.titleEn}",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = textPrimary,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                Text(
+                                    text = "${ch.estimatedMinutes}m",
+                                    fontSize = 10.sp,
+                                    color = textSecondary
+                                )
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -182,27 +310,36 @@ fun SmartPlannerScreen(
             }
         }
 
-        // Date Subtitle & Auto-Plan
+        // Date Subtitle & Generate Plan Controls
         item {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = dateSubtitle,
-                    style = MaterialTheme.typography.titleMedium.copy(
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 15.sp
-                    ),
-                    color = textPrimary
-                )
+                Column {
+                    Text(
+                        text = dateSubtitle,
+                        style = MaterialTheme.typography.titleMedium.copy(
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 15.sp
+                        ),
+                        color = textPrimary
+                    )
+                    Text(
+                        text = if (lang == AppLanguage.BANGLA)
+                            "দৈনিক প্রাপ্যতা: ${AppStrings.toBengaliDigits(availableHours.toString())} ঘণ্টা ($studyPeriod)"
+                        else
+                            "Availability: ${availableHours}h daily ($studyPeriod)",
+                        fontSize = 11.sp,
+                        color = textSecondary
+                    )
+                }
 
-                // Quick auto-generate plan button
                 Surface(
                     modifier = Modifier
                         .clip(RoundedCornerShape(12.dp))
-                        .clickable { viewModel.generateSmartPlanForCategory(timeRange) },
+                        .clickable { viewModel.generateSuggestedPlan(timeRange) },
                     color = if (isDarkTheme) RoyalBlue.copy(alpha = 0.2f) else RoyalBlueLight
                 ) {
                     Row(
@@ -217,7 +354,7 @@ fun SmartPlannerScreen(
                         )
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(
-                            text = if (lang == AppLanguage.BANGLA) "স্বয়ংক্রিয় প্ল্যান" else "Auto-Plan",
+                            text = if (lang == AppLanguage.BANGLA) "প্ল্যান তৈরি করুন" else "Generate Plan",
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
                             color = RoyalBlue
@@ -227,7 +364,125 @@ fun SmartPlannerScreen(
             }
         }
 
-        if (filteredTasks.isEmpty()) {
+        // 2. Suggested Plan Preview Card (Distinct preview state)
+        if (suggestedPlan.isNotEmpty()) {
+            item {
+                StudyHubCard(
+                    modifier = Modifier.fillMaxWidth(),
+                    backgroundColor = if (isDarkTheme) Color(0xFF1E293B) else Color(0xFFEFF6FF),
+                    borderColor = RoyalBlue
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = Icons.Default.AutoAwesome,
+                                    contentDescription = null,
+                                    tint = RoyalBlue,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = if (lang == AppLanguage.BANGLA) "প্রস্তাবিত স্টাডি প্ল্যান (রিভিউ)" else "Suggested Plan Preview",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 14.sp,
+                                    color = textPrimary
+                                )
+                            }
+                            IconButton(
+                                onClick = { viewModel.clearSuggestedPlan() },
+                                modifier = Modifier.size(24.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Close,
+                                    contentDescription = "Close",
+                                    tint = textSecondary,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        suggestedPlan.forEach { sugg ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 4.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = "${sugg.timeSlot} • ${sugg.subjectTitle}",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = RoyalBlue
+                                    )
+                                    Text(
+                                        text = sugg.topicTitle,
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        color = textPrimary
+                                    )
+                                    Text(
+                                        text = if (lang == AppLanguage.BANGLA) sugg.reasonBn else sugg.reasonEn,
+                                        fontSize = 10.sp,
+                                        color = textSecondary
+                                    )
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Button(
+                                onClick = { viewModel.acceptSuggestedPlan(timeRange) },
+                                modifier = Modifier.weight(1f),
+                                colors = ButtonDefaults.buttonColors(containerColor = RoyalBlue),
+                                shape = RoundedCornerShape(10.dp)
+                            ) {
+                                Text(
+                                    text = if (lang == AppLanguage.BANGLA) "প্ল্যান গ্রহণ করুন" else "Accept Plan",
+                                    fontSize = 12.sp,
+                                    color = Color.White
+                                )
+                            }
+
+                            OutlinedButton(
+                                onClick = { viewModel.generateSuggestedPlan(timeRange) },
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(10.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Refresh,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(14.dp),
+                                    tint = textPrimary
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = if (lang == AppLanguage.BANGLA) "পুনরায় তৈরি" else "Regenerate",
+                                    fontSize = 12.sp,
+                                    color = textPrimary
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Scheduled Study Tasks
+        if (filteredTasks.isEmpty() && suggestedPlan.isEmpty()) {
             item {
                 StudyHubCard(
                     modifier = Modifier.fillMaxWidth(),
@@ -271,7 +526,6 @@ fun SmartPlannerScreen(
                 }
             }
         } else {
-            // Scheduled Study Blocks List
             items(filteredTasks, key = { it.id }) { block ->
                 val accentBorder = if (block.isCompleted) MintGreen else RoyalBlue
 
@@ -369,7 +623,7 @@ fun SmartPlannerScreen(
             }
         }
 
-        // Motivational Card: Dynamic feedback
+        // Motivational / Consistency Card
         item {
             StudyHubCard(
                 modifier = Modifier.fillMaxWidth(),
@@ -422,6 +676,109 @@ fun SmartPlannerScreen(
         }
     }
 
+    // Availability Dialog (Configuring Study Time and Preferred Period)
+    if (showAvailabilityDialog) {
+        var tempHours by remember { mutableIntStateOf(availableHours) }
+        var tempPeriod by remember { mutableStateOf(studyPeriod) }
+
+        AlertDialog(
+            onDismissRequest = { showAvailabilityDialog = false },
+            containerColor = if (isDarkTheme) DarkMidnightSurface else Color.White,
+            title = {
+                Text(
+                    text = if (lang == AppLanguage.BANGLA) "পড়ার সময় ও প্রাপ্যতা কনফিগার করুন" else "Configure Study Availability",
+                    fontWeight = FontWeight.Bold,
+                    color = textPrimary
+                )
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                    Text(
+                        text = if (lang == AppLanguage.BANGLA) "দৈনিক পড়ার লক্ষ্যমাত্রা (ঘণ্টা):" else "Daily Available Study Hours:",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = textPrimary
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        listOf(2, 4, 6, 8).forEach { h ->
+                            val isSel = tempHours == h
+                            Surface(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .clickable { tempHours = h },
+                                color = if (isSel) RoyalBlue else if (isDarkTheme) Color(0xFF1E293B) else Color(0xFFF1F5F9)
+                            ) {
+                                Box(modifier = Modifier.padding(vertical = 8.dp), contentAlignment = Alignment.Center) {
+                                    Text(
+                                        text = "${h}h",
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 12.sp,
+                                        color = if (isSel) Color.White else textPrimary
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    Text(
+                        text = if (lang == AppLanguage.BANGLA) "পছন্দের পড়ার সময়:" else "Preferred Study Period:",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = textPrimary
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        listOf("ALL" to "All Day", "MORNING" to "Morning", "EVENING" to "Evening").forEach { (code, label) ->
+                            val isSel = tempPeriod == code
+                            Surface(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .clickable { tempPeriod = code },
+                                color = if (isSel) RoyalBlue else if (isDarkTheme) Color(0xFF1E293B) else Color(0xFFF1F5F9)
+                            ) {
+                                Box(modifier = Modifier.padding(vertical = 8.dp), contentAlignment = Alignment.Center) {
+                                    Text(
+                                        text = label,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 11.sp,
+                                        color = if (isSel) Color.White else textPrimary
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        viewModel.setDailyAvailableHours(tempHours)
+                        viewModel.setPreferredStudyPeriod(tempPeriod)
+                        showAvailabilityDialog = false
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = RoyalBlue)
+                ) {
+                    Text(if (lang == AppLanguage.BANGLA) "সংরক্ষণ করুন" else "Save Settings", color = Color.White)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showAvailabilityDialog = false }) {
+                    Text(AppStrings.cancelAction(lang), color = textSecondary)
+                }
+            }
+        )
+    }
+
+    // Add Custom Task Dialog
     if (showAddTaskDialog) {
         var timeSlot by remember { mutableStateOf("09:00 - 10:30") }
         var subject by remember { mutableStateOf("") }
