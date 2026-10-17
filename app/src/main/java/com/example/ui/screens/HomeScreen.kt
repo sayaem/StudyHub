@@ -161,13 +161,14 @@ fun HomeScreen(
 
         // Hero Greeting Block with user's name
         item {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 4.dp)
+            StudyHubCard(
+                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                backgroundColor = cardBg,
+                borderColor = borderCol,
+                onClick = {}
             ) {
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().padding(16.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -181,25 +182,13 @@ fun HomeScreen(
 
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = data.first,
+                            text = "${data.first} $userName",
                             style = MaterialTheme.typography.headlineSmall.copy(
                                 fontWeight = FontWeight.Bold,
-                                fontSize = 22.sp
+                                fontSize = 20.sp
                             ),
                             color = textPrimary
                         )
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(
-                                text = userName,
-                                style = MaterialTheme.typography.headlineSmall.copy(
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 22.sp
-                                ),
-                                color = textPrimary
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(text = data.second, fontSize = 20.sp)
-                        }
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
                             text = if (lang == AppLanguage.BANGLA) {
@@ -216,7 +205,7 @@ fun HomeScreen(
                         painter = painterResource(id = data.third),
                         contentDescription = null,
                         contentScale = ContentScale.Fit,
-                        modifier = Modifier.size(70.dp).padding(start = 8.dp)
+                        modifier = Modifier.size(60.dp).padding(start = 8.dp)
                     )
                 }
             }
