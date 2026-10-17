@@ -13,5 +13,6 @@ data class RevisionItemEntity(
     val isCompleted: Boolean = false,
     val subjectId: Long? = null,
     val chapterId: Long? = null,
-    val lastRevisedAt: Long = System.currentTimeMillis()
+    val lastRevisedAt: Long = System.currentTimeMillis(),
+    val nextRevisionDate: Long = System.currentTimeMillis()
 )

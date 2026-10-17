@@ -8,6 +8,8 @@ import com.example.data.model.PlannerTaskEntity
 import com.example.data.model.RevisionItemEntity
 import com.example.data.model.StudySessionEntity
 import com.example.data.model.SubjectEntity
+import com.example.data.model.MockTestEntity
+import com.example.data.model.MistakeEntity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.withContext
@@ -21,6 +23,8 @@ class StudyHubRepository(private val database: StudyHubDatabase) {
     val allAdmissions: Flow<List<AdmissionTargetEntity>> = database.admissionDao().getAllTargets()
     val allPlannerTasks: Flow<List<PlannerTaskEntity>> = database.plannerTaskDao().getAllTasks()
     val allRevisions: Flow<List<RevisionItemEntity>> = database.revisionItemDao().getAllRevisions()
+    val allMockTests: Flow<List<MockTestEntity>> = database.mockTestDao().getAllMockTests()
+    val allMistakes: Flow<List<MistakeEntity>> = database.mistakeDao().getAllMistakes()
 
     fun getTasksByCategory(category: String): Flow<List<PlannerTaskEntity>> =
         database.plannerTaskDao().getTasksByCategory(category)
@@ -85,6 +89,11 @@ class StudyHubRepository(private val database: StudyHubDatabase) {
         database.studySessionDao().insertSession(session)
     }
 
+    suspend fun updateSession(session: StudySessionEntity) = withContext(Dispatchers.IO) {
+        database.studySessionDao().updateSession(session)
+    }
+
+
     suspend fun insertAdmissionTarget(target: AdmissionTargetEntity): Long = withContext(Dispatchers.IO) {
         database.admissionDao().insertTarget(target)
     }
@@ -141,6 +150,28 @@ class StudyHubRepository(private val database: StudyHubDatabase) {
 
     suspend fun deleteRevision(id: Long) = withContext(Dispatchers.IO) {
         database.revisionItemDao().deleteRevisionById(id)
+    }
+
+    // Mock Tests
+    suspend fun insertMockTest(test: MockTestEntity): Long = withContext(Dispatchers.IO) {
+        database.mockTestDao().insertMockTest(test)
+    }
+
+    suspend fun deleteMockTest(test: MockTestEntity) = withContext(Dispatchers.IO) {
+        database.mockTestDao().deleteMockTest(test)
+    }
+
+    // Mistakes
+    suspend fun insertMistake(mistake: MistakeEntity): Long = withContext(Dispatchers.IO) {
+        database.mistakeDao().insertMistake(mistake)
+    }
+
+    suspend fun updateMistake(mistake: MistakeEntity) = withContext(Dispatchers.IO) {
+        database.mistakeDao().updateMistake(mistake)
+    }
+
+    suspend fun deleteMistake(mistake: MistakeEntity) = withContext(Dispatchers.IO) {
+        database.mistakeDao().deleteMistake(mistake)
     }
 
     suspend fun clearAllData() = withContext(Dispatchers.IO) {

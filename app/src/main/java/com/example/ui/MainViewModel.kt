@@ -44,7 +44,13 @@ enum class ScreenDestination {
     CALENDAR,
     PROGRESS_ANALYTICS,
     PROFILE,
-    NOTIFICATIONS
+    NOTIFICATIONS,
+    MOCK_TESTS,
+    MISTAKE_BOOK,
+    ABOUT,
+    PRIVACY,
+    TERMS,
+    DATA_MANAGEMENT
 }
 
 enum class SyllabusFilter {
@@ -193,11 +199,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun navigateTo(destination: ScreenDestination) {
         _currentScreen.value = destination
         when (destination) {
-            ScreenDestination.HOME, ScreenDestination.NOTIFICATIONS -> _currentTab.value = BottomTab.HOME
+            ScreenDestination.HOME, ScreenDestination.NOTIFICATIONS, ScreenDestination.MOCK_TESTS, ScreenDestination.MISTAKE_BOOK -> _currentTab.value = BottomTab.HOME
             ScreenDestination.SYLLABUS, ScreenDestination.SUBJECT_DETAILS, ScreenDestination.REVISION_TRACKER -> _currentTab.value = BottomTab.SYLLABUS
             ScreenDestination.FOCUS -> _currentTab.value = BottomTab.FOCUS
             ScreenDestination.CALENDAR, ScreenDestination.SMART_PLANNER -> _currentTab.value = BottomTab.CALENDAR
-            ScreenDestination.PROFILE, ScreenDestination.PROGRESS_ANALYTICS -> _currentTab.value = BottomTab.PROFILE
+            ScreenDestination.PROFILE, ScreenDestination.PROGRESS_ANALYTICS, ScreenDestination.ABOUT, ScreenDestination.DATA_MANAGEMENT -> _currentTab.value = BottomTab.PROFILE
+            else -> {}
         }
     }
 
@@ -249,6 +256,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val revisionItems: StateFlow<List<RevisionItemEntity>> = repository.allRevisions
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    val mockTests: StateFlow<List<com.example.data.model.MockTestEntity>> = repository.allMockTests
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val mistakes: StateFlow<List<com.example.data.model.MistakeEntity>> = repository.allMistakes
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
     // Syllabus Filter State
     private val _selectedSubjectFilter = MutableStateFlow<Long?>(null)
     val selectedSubjectFilter: StateFlow<Long?> = _selectedSubjectFilter.asStateFlow()
@@ -267,6 +280,25 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     // Smart Planner State
     private val _plannerTimeRange = MutableStateFlow("TODAY")
     val plannerTimeRange: StateFlow<String> = _plannerTimeRange.asStateFlow()
+
+    private val intelligenceEngine = com.example.domain.intelligence.StudyIntelligenceEngine()
+
+    val syllabusRecovery: StateFlow<com.example.domain.intelligence.SyllabusRecoveryReport> = combine(
+        chapters,
+        admissions
+    ) { ch, adm ->
+        intelligenceEngine.calculateSyllabusRecovery(ch, adm)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), com.example.domain.intelligence.SyllabusRecoveryReport(0, 0, 0, null, 0f, false, "", ""))
+
+    val studyInsights: StateFlow<List<com.example.domain.intelligence.StudyInsight>> = combine(
+        chapters,
+        sessions,
+        admissions
+    ) { ch, ses, adm ->
+        intelligenceEngine.generateInsights(ch, ses, adm)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+
 
     fun setPlannerTimeRange(range: String) {
         _plannerTimeRange.value = range
@@ -596,7 +628,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         subjectId = current.selectedSubjectId,
                         chapterId = current.selectedChapterId,
                         durationSeconds = durationStudied,
-                        timestamp = now,
+                        timestamp = now - (durationStudied * 1000L),
+                        endTime = now,
+                        isCompleted = durationStudied >= current.targetSeconds * 0.9, // completed if 90% done
                         sessionType = "POMODORO",
                         notes = "$subjectName: $chapterName"
                     )

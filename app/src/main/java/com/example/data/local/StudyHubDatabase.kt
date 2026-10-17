@@ -10,6 +10,9 @@ import com.example.data.model.PlannerTaskEntity
 import com.example.data.model.RevisionItemEntity
 import com.example.data.model.StudySessionEntity
 import com.example.data.model.SubjectEntity
+import com.example.data.model.MockTestEntity
+import com.example.data.model.MistakeEntity
+import com.example.data.model.FocusScheduleEntity
 import kotlinx.coroutines.CoroutineScope
 import java.util.Calendar
 
@@ -20,11 +23,15 @@ import java.util.Calendar
         StudySessionEntity::class,
         AdmissionTargetEntity::class,
         PlannerTaskEntity::class,
-        RevisionItemEntity::class
+        RevisionItemEntity::class,
+        MockTestEntity::class,
+        MistakeEntity::class,
+        FocusScheduleEntity::class
     ],
-    version = 2,
+    version = 4,
     exportSchema = false
 )
+@androidx.room.TypeConverters(Converters::class)
 abstract class StudyHubDatabase : RoomDatabase() {
     abstract fun subjectDao(): SubjectDao
     abstract fun chapterDao(): ChapterDao
@@ -32,6 +39,9 @@ abstract class StudyHubDatabase : RoomDatabase() {
     abstract fun admissionDao(): AdmissionDao
     abstract fun plannerTaskDao(): PlannerTaskDao
     abstract fun revisionItemDao(): RevisionItemDao
+    abstract fun mockTestDao(): MockTestDao
+    abstract fun mistakeDao(): MistakeDao
+    abstract fun focusScheduleDao(): FocusScheduleDao
 
     companion object {
         @Volatile

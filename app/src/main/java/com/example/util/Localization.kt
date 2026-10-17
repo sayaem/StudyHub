@@ -299,4 +299,15 @@ object AppStrings {
     fun greetingAfternoon(lang: AppLanguage) = if (lang == AppLanguage.BANGLA) "শুভ দুপুর" else "Good afternoon"
     fun greetingEvening(lang: AppLanguage) = if (lang == AppLanguage.BANGLA) "শুভ সন্ধ্যা" else "Good evening"
     fun greetingNight(lang: AppLanguage) = if (lang == AppLanguage.BANGLA) "শুভ রাত্রি" else "Good night"
+
+    // Phase 5: Legal & Data
+    fun privacyPolicy(lang: AppLanguage) = if (lang == AppLanguage.BANGLA) "গোপনীয়তা নীতি" else "Privacy Policy"
+    fun termsConditions(lang: AppLanguage) = if (lang == AppLanguage.BANGLA) "শর্তাবলী" else "Terms & Conditions"
+    fun dataManagement(lang: AppLanguage) = if (lang == AppLanguage.BANGLA) "ডাটা ব্যবস্থাপনা" else "Data Management"
+    fun openSourceLicenses(lang: AppLanguage) = if (lang == AppLanguage.BANGLA) "ওপেন সোর্স লাইসেন্স" else "Open-Source Licenses"
+    fun permissionInfo(lang: AppLanguage) = if (lang == AppLanguage.BANGLA) "অনুমতিসমূহ" else "App Permissions"
+    fun exportData(lang: AppLanguage) = if (lang == AppLanguage.BANGLA) "ডাটা এক্সপোর্ট (JSON)" else "Export Data (JSON)"
+    fun restoreData(lang: AppLanguage) = if (lang == AppLanguage.BANGLA) "ডাটা রিস্টোর" else "Restore Data"
+    fun confirmResetData(lang: AppLanguage) = if (lang == AppLanguage.BANGLA) "আপনি কি নিশ্চিত যে সকল ডাটা মুছে ফেলবেন?" else "Are you sure you want to erase all data?"
+    fun permissionDetails(lang: AppLanguage) = if (lang == AppLanguage.BANGLA) "কেন অনুমতি প্রয়োজন" else "Why we need permissions"
 }

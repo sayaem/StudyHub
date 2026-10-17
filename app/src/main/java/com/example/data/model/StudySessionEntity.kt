@@ -10,6 +10,9 @@ data class StudySessionEntity(
     val chapterId: Long? = null,
     val durationSeconds: Long,
     val timestamp: Long = System.currentTimeMillis(),
+    val endTime: Long = System.currentTimeMillis(),
+    val isCompleted: Boolean = true,
+    val interruptionCount: Int = 0,
     val sessionType: String = "POMODORO", // "POMODORO", "STOPWATCH", "MANUAL"
     val notes: String = ""
 )

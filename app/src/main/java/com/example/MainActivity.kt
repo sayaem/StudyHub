@@ -52,6 +52,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.ui.BottomTab
 import com.example.ui.MainViewModel
 import com.example.ui.ScreenDestination
+import com.example.ui.screens.AboutScreen
+import com.example.ui.screens.DataManagementScreen
 import com.example.ui.screens.CalendarScreen
 import com.example.ui.screens.FocusTimerScreen
 import com.example.ui.screens.HomeScreen
@@ -62,6 +64,8 @@ import com.example.ui.screens.SmartPlannerScreen
 import com.example.ui.screens.SubjectDetailsScreen
 import com.example.ui.screens.SyllabusScreen
 import com.example.ui.screens.NotificationsScreen
+import com.example.ui.screens.MockTestScreen
+import com.example.ui.screens.MistakeBookScreen
 import com.example.ui.theme.DarkBorder
 import com.example.ui.theme.DarkMidnightBg
 import com.example.ui.theme.DarkMidnightSurface
@@ -199,6 +203,32 @@ fun StudyHubApp(viewModel: MainViewModel, isDarkTheme: Boolean) {
                     onBack = { viewModel.navigateTo(ScreenDestination.HOME) },
                     onNavigate = { viewModel.navigateTo(it) }
                 )
+                ScreenDestination.MOCK_TESTS -> MockTestScreen(
+                    viewModel = viewModel,
+                    isDarkTheme = isDarkTheme,
+                    lang = lang,
+                    onBack = { viewModel.navigateTo(ScreenDestination.HOME) }
+                )
+                ScreenDestination.MISTAKE_BOOK -> MistakeBookScreen(
+                    viewModel = viewModel,
+                    isDarkTheme = isDarkTheme,
+                    lang = lang,
+                    onBack = { viewModel.navigateTo(ScreenDestination.HOME) }
+                )
+                ScreenDestination.ABOUT -> AboutScreen(
+                    viewModel = viewModel,
+                    isDarkTheme = isDarkTheme,
+                    lang = lang,
+                    onBack = { viewModel.navigateTo(ScreenDestination.PROFILE) }
+                )
+                ScreenDestination.DATA_MANAGEMENT -> DataManagementScreen(
+                    viewModel = viewModel,
+                    isDarkTheme = isDarkTheme,
+                    lang = lang,
+                    onBack = { viewModel.navigateTo(ScreenDestination.PROFILE) }
+                )
+                ScreenDestination.PRIVACY -> {} // Placeholder
+                ScreenDestination.TERMS -> {} // Placeholder
             }
         }
     }

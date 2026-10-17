@@ -4,6 +4,7 @@ import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import androidx.room.Update
 import com.example.data.model.StudySessionEntity
 import kotlinx.coroutines.flow.Flow
 
@@ -17,6 +18,9 @@ interface StudySessionDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertSession(session: StudySessionEntity): Long
+
+    @Update
+    suspend fun updateSession(session: StudySessionEntity)
 
     @Query("DELETE FROM study_sessions WHERE id = :id")
     suspend fun deleteSessionById(id: Long)
