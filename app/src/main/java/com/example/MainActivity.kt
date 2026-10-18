@@ -86,13 +86,19 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+
+        // Initialize Android notification channels
+        com.example.notification.StudyHubNotificationHelper.initNotificationChannels(applicationContext)
+
+        handleNavigationIntent(intent)
+
         setContent {
             val isDarkTheme by viewModel.isDarkTheme.collectAsStateWithLifecycle()
             val isOnboardingCompleted by viewModel.isOnboardingCompleted.collectAsStateWithLifecycle()
 
             MyApplicationTheme(darkTheme = isDarkTheme) {
                 if (!isOnboardingCompleted) {
-                    com.example.ui.screens.SplashAndOnboardingScreen(
+                    com.example.ui.screens.OnboardingFlowScreen(
                         viewModel = viewModel,
                         isDarkTheme = isDarkTheme,
                         onComplete = { goal, focus, breakMins ->
@@ -103,6 +109,18 @@ class MainActivity : ComponentActivity() {
                     StudyHubApp(viewModel = viewModel, isDarkTheme = isDarkTheme)
                 }
             }
+        }
+    }
+
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleNavigationIntent(intent)
+    }
+
+    private fun handleNavigationIntent(intent: android.content.Intent?) {
+        if (intent?.getStringExtra("navigate_to") == "FOCUS") {
+            viewModel.navigateTo(ScreenDestination.FOCUS)
         }
     }
 }
@@ -120,12 +138,13 @@ fun StudyHubApp(viewModel: MainViewModel, isDarkTheme: Boolean) {
     val selectedSubjectId by viewModel.selectedSubjectId.collectAsStateWithLifecycle()
 
     // Handle back button on sub-screens to return to their parent
+    // Handle back button on sub-screens to return to their parent
     BackHandler(enabled = currentScreen != ScreenDestination.HOME) {
         when (currentScreen) {
             ScreenDestination.SUBJECT_DETAILS -> viewModel.navigateTo(ScreenDestination.SYLLABUS)
-            ScreenDestination.SMART_PLANNER -> viewModel.navigateTo(ScreenDestination.HOME)
+            ScreenDestination.SMART_PLANNER, ScreenDestination.CALENDAR -> viewModel.navigateTo(ScreenDestination.HOME)
             ScreenDestination.REVISION_TRACKER -> viewModel.navigateTo(ScreenDestination.SYLLABUS)
-            ScreenDestination.PROGRESS_ANALYTICS -> viewModel.navigateTo(ScreenDestination.PROFILE)
+            ScreenDestination.PROGRESS_ANALYTICS -> viewModel.navigateBack()
             ScreenDestination.NOTIFICATIONS -> viewModel.navigateTo(ScreenDestination.HOME)
             else -> viewModel.navigateTo(ScreenDestination.HOME)
         }
@@ -177,10 +196,12 @@ fun StudyHubApp(viewModel: MainViewModel, isDarkTheme: Boolean) {
                     timerState = timerState,
                     subjects = subjects,
                     chapters = chapters,
+                    isDarkTheme = isDarkTheme,
                     lang = lang
                 )
-                ScreenDestination.SMART_PLANNER -> SmartPlannerScreen(
+                ScreenDestination.SMART_PLANNER, ScreenDestination.CALENDAR -> CalendarScreen(
                     viewModel = viewModel,
+                    admissions = admissions,
                     isDarkTheme = isDarkTheme,
                     lang = lang
                 )
@@ -190,17 +211,11 @@ fun StudyHubApp(viewModel: MainViewModel, isDarkTheme: Boolean) {
                     lang = lang,
                     onBack = { viewModel.navigateTo(ScreenDestination.SYLLABUS) }
                 )
-                ScreenDestination.CALENDAR -> CalendarScreen(
-                    viewModel = viewModel,
-                    admissions = admissions,
-                    isDarkTheme = isDarkTheme,
-                    lang = lang
-                )
                 ScreenDestination.PROGRESS_ANALYTICS -> ProgressAnalyticsScreen(
                     viewModel = viewModel,
                     isDarkTheme = isDarkTheme,
                     lang = lang,
-                    onBack = { viewModel.navigateTo(ScreenDestination.PROFILE) }
+                    onBack = { viewModel.navigateBack() }
                 )
                 ScreenDestination.PROFILE -> ProfileScreen(
                     viewModel = viewModel,
@@ -231,7 +246,8 @@ fun StudyHubApp(viewModel: MainViewModel, isDarkTheme: Boolean) {
                     viewModel = viewModel,
                     isDarkTheme = isDarkTheme,
                     lang = lang,
-                    onBack = { viewModel.navigateTo(ScreenDestination.PROFILE) }
+                    onBack = { viewModel.navigateTo(ScreenDestination.PROFILE) },
+                    onNavigate = { viewModel.navigateTo(it) }
                 )
                 ScreenDestination.DATA_MANAGEMENT -> DataManagementScreen(
                     viewModel = viewModel,

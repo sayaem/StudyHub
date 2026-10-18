@@ -1,11 +1,20 @@
 package com.example.ui.screens
 
+import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.content.pm.ResolveInfo
+import android.graphics.drawable.Drawable
+import android.os.Build
 import android.provider.Settings
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -25,22 +34,38 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.core.graphics.drawable.toBitmap
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.data.model.ChapterEntity
-import com.example.data.model.FocusScheduleEntity
 import com.example.data.model.SubjectEntity
+import com.example.service.StudyHubAccessibilityService
 import com.example.ui.MainViewModel
 import com.example.ui.TimerState
 import com.example.ui.components.StudyHubCard
 import com.example.ui.theme.*
 import com.example.util.AppLanguage
 import com.example.util.AppStrings
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+
+data class InstalledAppItem(
+    val packageName: String,
+    val appName: String,
+    val icon: Drawable?
+)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -49,58 +74,108 @@ fun FocusTimerScreen(
     timerState: TimerState,
     subjects: List<SubjectEntity>,
     chapters: List<ChapterEntity>,
+    isDarkTheme: Boolean = false,
     lang: AppLanguage,
     onBack: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
-    val stats by viewModel.studyStats.collectAsStateWithLifecycle()
-    val focusSchedules by viewModel.focusSchedules.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val stats by viewModel.studyStats.collectAsStateWithLifecycle()
+    val blockedApps by viewModel.blockedApps.collectAsStateWithLifecycle()
+    val isBlockerEnabled by viewModel.isDistractionBlockerEnabled.collectAsStateWithLifecycle()
+    val isAccessibilityActive by viewModel.isAccessibilityServiceActive.collectAsStateWithLifecycle()
+    val hasNotifPermission by viewModel.hasNotificationPermission.collectAsStateWithLifecycle()
+    val customTimerMinutes by viewModel.customTimerMinutes.collectAsStateWithLifecycle()
 
-    var showAddScheduleDialog by remember { mutableStateOf(false) }
+    // Dialog & sheet states
+    var showAppPickerSheet by remember { mutableStateOf(false) }
+    var showCustomDurationDialog by remember { mutableStateOf(false) }
+    var showSubjectPickerSheet by remember { mutableStateOf(false) }
+    var showDiscardConfirmDialog by remember { mutableStateOf(false) }
     var showSessionCompleteDialog by remember { mutableStateOf(false) }
+    var testNotifSentBanner by remember { mutableStateOf(false) }
+
+    // Session completion inputs
     var productivityRating by remember { mutableIntStateOf(5) }
     var sessionNotes by remember { mutableStateOf("") }
 
-    val hasUsagePermission = remember { viewModel.hasUsageAccessPermission() }
+    // Runtime permission launcher for Android 13+
+    val notifPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        viewModel.refreshNotificationPermission(context)
+    }
 
-    val bg = DarkMidnightBg
-    val cardBg = DarkMidnightSurface
-    val textPrimary = DarkTextWhite
-    val textSecondary = DarkTextMuted
+    // Refresh accessibility and notification state on resume
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                viewModel.refreshAccessibilityStatus(context)
+                viewModel.refreshNotificationPermission(context)
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
 
-    val selectedSubject = subjects.find { it.id == timerState.selectedSubjectId } ?: subjects.firstOrNull()
+    // Theme Tokens
+    val bg = if (isDarkTheme) DarkMidnightBg else Color(0xFFF8FAFC)
+    val cardBg = if (isDarkTheme) DarkMidnightSurface else Color.White
+    val borderCol = if (isDarkTheme) DarkBorder else SlateBorder
+    val textPrimary = if (isDarkTheme) DarkTextWhite else SlateDark
+    val textSecondary = if (isDarkTheme) DarkTextMuted else SlateMuted
+    val pillInactiveBg = if (isDarkTheme) DarkMidnightSurface else Color(0xFFEDF2F7)
+
+    // Current subject & chapter
+    val selectedSubject = subjects.find { it.id == timerState.selectedSubjectId }
     val relevantChapters = chapters.filter { it.subjectId == (selectedSubject?.id ?: 0L) }
-    val selectedChapter = relevantChapters.find { it.id == timerState.selectedChapterId } ?: relevantChapters.firstOrNull()
+    val selectedChapter = relevantChapters.find { it.id == timerState.selectedChapterId }
 
-    val subjectTitle = if (lang == AppLanguage.BANGLA && selectedSubject?.nameBn?.isNotBlank() == true)
-        selectedSubject.nameBn
-    else
-        selectedSubject?.nameEn ?: (if (lang == AppLanguage.BANGLA) "সাধারণ অধ্যয়ন" else "General Focus")
+    val subjectTitle = if (selectedSubject != null) {
+        if (lang == AppLanguage.BANGLA && selectedSubject.nameBn.isNotBlank()) selectedSubject.nameBn else selectedSubject.nameEn
+    } else {
+        if (lang == AppLanguage.BANGLA) "সাধারণ ফোকাস" else "General Focus"
+    }
 
-    val chapterTitle = if (lang == AppLanguage.BANGLA && selectedChapter?.titleBn?.isNotBlank() == true)
-        selectedChapter.titleBn
-    else
-        selectedChapter?.titleEn ?: (if (lang == AppLanguage.BANGLA) "স্টাডি সেশন" else "Study Session")
+    val chapterTitle = if (selectedChapter != null) {
+        if (lang == AppLanguage.BANGLA && selectedChapter.titleBn.isNotBlank()) selectedChapter.titleBn else selectedChapter.titleEn
+    } else {
+        if (lang == AppLanguage.BANGLA) "স্টাডি সেশন" else "Study Session"
+    }
+
+    val isRunning = timerState.isRunning && !timerState.isPaused
+    val isPaused = timerState.isRunning && timerState.isPaused
+    val isIdle = !timerState.isRunning
 
     LazyColumn(
         modifier = modifier
             .fillMaxSize()
             .background(bg)
+            .statusBarsPadding()
             .testTag("focus_screen"),
-        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 96.dp),
+        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 100.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // Top Bar: Back Arrow, "Study Timer", Menu icon
+        // 1. Header
         item {
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 4.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 if (onBack != null) {
-                    IconButton(onClick = onBack, modifier = Modifier.size(36.dp)) {
+                    IconButton(
+                        onClick = onBack,
+                        modifier = Modifier
+                            .size(40.dp)
+                            .testTag("button_back")
+                    ) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = "Back",
@@ -108,67 +183,88 @@ fun FocusTimerScreen(
                         )
                     }
                 } else {
-                    Spacer(modifier = Modifier.size(36.dp))
+                    Box(modifier = Modifier.size(40.dp))
                 }
 
-                Text(
-                    text = AppStrings.timerFocus(lang),
-                    style = MaterialTheme.typography.titleLarge.copy(
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 18.sp
-                    ),
-                    color = textPrimary
-                )
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(
+                        text = AppStrings.timerFocus(lang),
+                        style = MaterialTheme.typography.titleLarge.copy(
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 18.sp
+                        ),
+                        color = textPrimary
+                    )
+                    Text(
+                        text = AppStrings.focusSubtitle(lang),
+                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                        color = textSecondary
+                    )
+                }
 
-                IconButton(onClick = { /* Menu */ }, modifier = Modifier.size(36.dp)) {
+                IconButton(
+                    onClick = { showCustomDurationDialog = true },
+                    modifier = Modifier
+                        .size(40.dp)
+                        .testTag("button_focus_options")
+                ) {
                     Icon(
-                        imageVector = Icons.Default.Menu,
-                        contentDescription = "Menu",
+                        imageVector = Icons.Default.Tune,
+                        contentDescription = "Duration Settings",
                         tint = textPrimary
                     )
                 }
             }
         }
 
-        // Tagged Subject Section (Picker if multiple subjects)
+        // 2. Subject & Chapter Tag
         item {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.padding(top = 4.dp)
+            Surface(
+                shape = RoundedCornerShape(20.dp),
+                color = RoyalBlue.copy(alpha = if (isDarkTheme) 0.15f else 0.10f),
+                border = BorderStroke(1.dp, RoyalBlue.copy(alpha = 0.35f)),
+                modifier = Modifier
+                    .clip(RoundedCornerShape(20.dp))
+                    .clickable(enabled = isIdle) { showSubjectPickerSheet = true }
+                    .testTag("subject_tag_chip")
             ) {
-                Surface(
-                    shape = RoundedCornerShape(20.dp),
-                    color = RoyalBlue.copy(alpha = 0.15f),
-                    border = BorderStroke(1.dp, RoyalBlue.copy(alpha = 0.4f))
+                Row(
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
+                    Icon(
+                        imageVector = Icons.Default.AutoStories,
+                        contentDescription = null,
+                        tint = RoyalBlue,
+                        modifier = Modifier.size(15.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "$subjectTitle • $chapterTitle",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = if (isDarkTheme) Color(0xFF93C5FD) else RoyalBlue
+                    )
+                    if (isIdle) {
+                        Spacer(modifier = Modifier.width(4.dp))
                         Icon(
-                            imageVector = Icons.Default.Science,
+                            imageVector = Icons.Default.ArrowDropDown,
                             contentDescription = null,
                             tint = RoyalBlue,
-                            modifier = Modifier.size(14.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = "$subjectTitle • $chapterTitle",
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = Color(0xFF93C5FD)
+                            modifier = Modifier.size(16.dp)
                         )
                     }
                 }
             }
         }
 
-        // Preset Duration Selector Pills (25m, 45m, 60m, 90m)
+        // 3. Preset Duration Selector Pills
         item {
-            if (!timerState.isRunning) {
+            if (isIdle) {
                 LazyRow(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    contentPadding = PaddingValues(horizontal = 4.dp)
+                    contentPadding = PaddingValues(horizontal = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
                     val presets = listOf(
                         25 * 60L to AppStrings.timerDurationPreset(25, lang),
@@ -180,8 +276,8 @@ fun FocusTimerScreen(
                         val isSel = timerState.targetSeconds == secs
                         Surface(
                             shape = RoundedCornerShape(16.dp),
-                            color = if (isSel) RoyalBlue else DarkMidnightSurface,
-                            border = BorderStroke(1.dp, if (isSel) RoyalBlue else DarkBorder),
+                            color = if (isSel) RoyalBlue else pillInactiveBg,
+                            border = BorderStroke(1.dp, if (isSel) RoyalBlue else borderCol),
                             modifier = Modifier
                                 .clip(RoundedCornerShape(16.dp))
                                 .clickable { viewModel.setTimerDuration(secs) }
@@ -192,15 +288,79 @@ fun FocusTimerScreen(
                                 fontSize = 12.sp,
                                 fontWeight = if (isSel) FontWeight.Bold else FontWeight.Medium,
                                 color = if (isSel) Color.White else textSecondary,
-                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
+                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp)
                             )
                         }
+                    }
+
+                    // Custom duration pill
+                    item {
+                        val isCustomSelected = presets.none { it.first == timerState.targetSeconds }
+                        val customMins = (timerState.targetSeconds / 60L).toInt()
+                        Surface(
+                            shape = RoundedCornerShape(16.dp),
+                            color = if (isCustomSelected) RoyalBlue else pillInactiveBg,
+                            border = BorderStroke(1.dp, if (isCustomSelected) RoyalBlue else borderCol),
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(16.dp))
+                                .clickable { showCustomDurationDialog = true }
+                                .testTag("timer_preset_custom")
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Edit,
+                                    contentDescription = null,
+                                    tint = if (isCustomSelected) Color.White else textSecondary,
+                                    modifier = Modifier.size(13.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = if (isCustomSelected) "${AppStrings.formatNumber(customMins, lang)}m" else AppStrings.customDuration(lang),
+                                    fontSize = 12.sp,
+                                    fontWeight = if (isCustomSelected) FontWeight.Bold else FontWeight.Medium,
+                                    color = if (isCustomSelected) Color.White else textSecondary
+                                )
+                            }
+                        }
+                    }
+                }
+            } else {
+                // When running or paused, show non-editable session pill
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = (if (isRunning) MintGreen else AmberWarning).copy(alpha = 0.15f),
+                    border = BorderStroke(1.dp, (if (isRunning) MintGreen else AmberWarning).copy(alpha = 0.4f))
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(8.dp)
+                                .clip(CircleShape)
+                                .background(if (isRunning) MintGreen else AmberWarning)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = if (isRunning) {
+                                if (lang == AppLanguage.BANGLA) "সক্রিয় ফোকাস" else "Deep Focus Running"
+                            } else {
+                                if (lang == AppLanguage.BANGLA) "বিরতি / স্থগিত" else "Session Paused"
+                            },
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (isRunning) MintGreen else AmberWarning
+                        )
                     }
                 }
             }
         }
 
-        // Circular Countdown Timer Display
+        // 4. Circular Countdown Timer Visualization
         item {
             Box(
                 modifier = Modifier
@@ -208,26 +368,32 @@ fun FocusTimerScreen(
                     .padding(8.dp),
                 contentAlignment = Alignment.Center
             ) {
-                val progress = (timerState.currentSeconds.toFloat() / timerState.targetSeconds.toFloat()).coerceIn(0f, 1f)
+                val progress = if (timerState.targetSeconds > 0) {
+                    (timerState.currentSeconds.toFloat() / timerState.targetSeconds.toFloat()).coerceIn(0f, 1f)
+                } else 0f
+
                 val animatedProgress by animateFloatAsState(
                     targetValue = progress,
                     animationSpec = tween(durationMillis = 800),
                     label = "timerDial"
                 )
 
+                val ringTrackColor = if (isDarkTheme) Color(0xFF1E2C46) else Color(0xFFE2E8F0)
+                val ringActiveColor = if (isPaused) AmberWarning else RoyalBlue
+
                 Canvas(
                     modifier = Modifier
                         .fillMaxSize()
                         .testTag("timer_display")
                 ) {
-                    val strokeWidth = 12.dp.toPx()
+                    val strokeWidth = 14.dp.toPx()
                     drawCircle(
-                        color = DarkBorder,
+                        color = ringTrackColor,
                         radius = size.minDimension / 2 - strokeWidth / 2,
                         style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
                     )
                     drawArc(
-                        color = RoyalBlue,
+                        color = ringActiveColor,
                         startAngle = -90f,
                         sweepAngle = 360f * animatedProgress,
                         useCenter = false,
@@ -236,16 +402,22 @@ fun FocusTimerScreen(
                 }
 
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    val minutes = timerState.currentSeconds / 60
-                    val seconds = timerState.currentSeconds % 60
-                    val timeStr = "%02d:%02d".format(minutes, seconds)
+                    val totalSecs = timerState.currentSeconds
+                    val hours = totalSecs / 3600
+                    val minutes = (totalSecs % 3600) / 60
+                    val seconds = totalSecs % 60
+                    val timeStr = if (hours > 0) {
+                        "%02d:%02d:%02d".format(hours, minutes, seconds)
+                    } else {
+                        "%02d:%02d".format(minutes, seconds)
+                    }
                     val displayTime = if (lang == AppLanguage.BANGLA) AppStrings.toBengaliDigits(timeStr) else timeStr
 
                     Text(
                         text = displayTime,
                         style = MaterialTheme.typography.displayMedium.copy(
                             fontWeight = FontWeight.Bold,
-                            fontSize = 44.sp,
+                            fontSize = if (hours > 0) 36.sp else 46.sp,
                             letterSpacing = (-1).sp
                         ),
                         color = textPrimary
@@ -254,39 +426,49 @@ fun FocusTimerScreen(
                     Spacer(modifier = Modifier.height(2.dp))
 
                     Text(
-                        text = if (lang == AppLanguage.BANGLA) "অধ্যয়ন সময়" else "Study Time",
-                        fontSize = 13.sp,
-                        color = Color(0xFF93C5FD)
+                        text = when {
+                            isRunning -> if (lang == AppLanguage.BANGLA) "মনোযোগ দিন" else "Stay Focused"
+                            isPaused -> if (lang == AppLanguage.BANGLA) "বিরতি চলছে" else "Take a Breath"
+                            else -> if (lang == AppLanguage.BANGLA) "শুরু করতে প্রস্তুত" else "Ready to Focus"
+                        },
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = if (isDarkTheme) Color(0xFF93C5FD) else RoyalBlue
                     )
                 }
             }
-
-            Spacer(modifier = Modifier.height(8.dp))
         }
 
-        // Timer Control Buttons Row: Restart | Play/Pause | Stop
+        // 5. Primary & Secondary Timer Controls Row
         item {
-            val isRunning = timerState.isRunning && !timerState.isPaused
-
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 4.dp),
                 horizontalArrangement = Arrangement.Center,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // 1. Restart
+                // Secondary 1: Restart
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     modifier = Modifier
                         .clip(RoundedCornerShape(12.dp))
-                        .clickable { viewModel.resetTimer() }
+                        .clickable {
+                            val elapsed = timerState.targetSeconds - timerState.currentSeconds
+                            if (timerState.isRunning && elapsed > 10L) {
+                                showDiscardConfirmDialog = true
+                            } else {
+                                viewModel.resetTimer()
+                            }
+                        }
                         .padding(8.dp)
                         .testTag("button_restart_timer")
                 ) {
                     Box(
                         modifier = Modifier
                             .size(52.dp)
-                            .background(DarkMidnightSurface, CircleShape)
-                            .border(1.dp, DarkBorder, CircleShape),
+                            .background(cardBg, CircleShape)
+                            .border(1.dp, borderCol, CircleShape),
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
@@ -306,14 +488,18 @@ fun FocusTimerScreen(
 
                 Spacer(modifier = Modifier.width(28.dp))
 
-                // 2. Play / Pause Big Button
+                // Primary Action: Start / Pause / Resume (Big RoyalBlue circular button)
                 Box(
                     modifier = Modifier
                         .size(68.dp)
                         .clip(CircleShape)
                         .background(RoyalBlue)
                         .clickable {
-                            if (isRunning) viewModel.pauseTimer() else viewModel.startTimer()
+                            if (isRunning) {
+                                viewModel.pauseTimer()
+                            } else {
+                                viewModel.startTimer()
+                            }
                         }
                         .testTag("button_start_pause_timer"),
                     contentAlignment = Alignment.Center
@@ -322,13 +508,13 @@ fun FocusTimerScreen(
                         imageVector = if (isRunning) Icons.Default.Pause else Icons.Default.PlayArrow,
                         contentDescription = if (isRunning) AppStrings.pauseTimer(lang) else AppStrings.startTimer(lang),
                         tint = Color.White,
-                        modifier = Modifier.size(34.dp)
+                        modifier = Modifier.size(36.dp)
                     )
                 }
 
                 Spacer(modifier = Modifier.width(28.dp))
 
-                // 3. Stop / Finish
+                // Secondary 2: Finish Session
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     modifier = Modifier
@@ -343,15 +529,15 @@ fun FocusTimerScreen(
                     Box(
                         modifier = Modifier
                             .size(52.dp)
-                            .background(DarkMidnightSurface, CircleShape)
-                            .border(1.dp, DarkBorder, CircleShape),
+                            .background(cardBg, CircleShape)
+                            .border(1.dp, borderCol, CircleShape),
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
-                            imageVector = Icons.Default.Stop,
+                            imageVector = Icons.Default.Check,
                             contentDescription = AppStrings.stopTimer(lang),
-                            tint = textSecondary,
-                            modifier = Modifier.size(24.dp)
+                            tint = MintGreen,
+                            modifier = Modifier.size(26.dp)
                         )
                     }
                     Spacer(modifier = Modifier.height(6.dp))
@@ -364,11 +550,11 @@ fun FocusTimerScreen(
             }
         }
 
-        // "Session 1 of 4"
+        // 6. Session Progress Indicators (1 to 4 dots)
         item {
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.padding(vertical = 4.dp)
+                modifier = Modifier.padding(vertical = 2.dp)
             ) {
                 val sessText = if (lang == AppLanguage.BANGLA)
                     "সেশন ${AppStrings.formatNumber(timerState.currentSession, lang)} / ${AppStrings.formatNumber(timerState.totalSessions, lang)}"
@@ -381,31 +567,246 @@ fun FocusTimerScreen(
                     color = textSecondary
                 )
 
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(6.dp))
 
                 Row(
-                    modifier = Modifier.width(90.dp),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    modifier = Modifier.width(100.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    for (i in 1..4) {
+                    for (i in 1..timerState.totalSessions) {
                         Box(
                             modifier = Modifier
                                 .weight(1f)
                                 .height(4.dp)
                                 .clip(RoundedCornerShape(2.dp))
-                                .background(if (i <= timerState.currentSession) RoyalBlue else Color(0xFF1E2C46))
+                                .background(
+                                    if (i <= timerState.currentSession) RoyalBlue
+                                    else if (isDarkTheme) Color(0xFF1E2C46) else Color(0xFFE2E8F0)
+                                )
                         )
                     }
                 }
             }
         }
 
-        // Hardcore Focus Mode & Distraction Control Section
+        // 7. Distraction Control & App Blocker Card (Accessibility Based)
         item {
             StudyHubCard(
                 modifier = Modifier.fillMaxWidth(),
                 backgroundColor = cardBg,
-                borderColor = DarkBorder
+                borderColor = borderCol
+            ) {
+                Column(modifier = Modifier.padding(18.dp)) {
+                    // Header of the card
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier
+                                    .size(32.dp)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(RoyalBlue.copy(alpha = 0.12f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Shield,
+                                    contentDescription = null,
+                                    tint = RoyalBlue,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Column {
+                                Text(
+                                    text = AppStrings.distractionControlTitle(lang),
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = textPrimary
+                                )
+                                Text(
+                                    text = AppStrings.blockedAppsCount(blockedApps.size, lang),
+                                    fontSize = 11.sp,
+                                    color = textSecondary
+                                )
+                            }
+                        }
+
+                        Switch(
+                            checked = isBlockerEnabled,
+                            onCheckedChange = { viewModel.toggleDistractionBlocker() },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = Color.White,
+                                checkedTrackColor = RoyalBlue
+                            ),
+                            modifier = Modifier.testTag("switch_distraction_blocker")
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    // Overall Blocking Status Alert Badge
+                    val statusText: String
+                    val statusBg: Color
+                    val statusContentColor: Color
+                    val statusIcon = when {
+                        !isBlockerEnabled -> {
+                            statusText = if (lang == AppLanguage.BANGLA) "ব্লকার বন্ধ রয়েছে" else "Blocker is turned OFF"
+                            statusBg = pillInactiveBg
+                            statusContentColor = textSecondary
+                            Icons.Default.Block
+                        }
+                        !isAccessibilityActive || blockedApps.isEmpty() -> {
+                            statusText = AppStrings.blockerStatusSetupNeeded(lang)
+                            statusBg = AmberWarning.copy(alpha = 0.12f)
+                            statusContentColor = AmberWarning
+                            Icons.Default.WarningAmber
+                        }
+                        isPaused -> {
+                            statusText = AppStrings.blockerStatusPaused(lang)
+                            statusBg = AmberWarning.copy(alpha = 0.12f)
+                            statusContentColor = AmberWarning
+                            Icons.Default.PauseCircle
+                        }
+                        isRunning -> {
+                            statusText = AppStrings.blockerStatusActive(lang)
+                            statusBg = MintGreen.copy(alpha = 0.12f)
+                            statusContentColor = MintGreen
+                            Icons.Default.CheckCircle
+                        }
+                        else -> {
+                            statusText = AppStrings.blockerStatusReady(lang)
+                            statusBg = RoyalBlue.copy(alpha = 0.12f)
+                            statusContentColor = RoyalBlue
+                            Icons.Default.Info
+                        }
+                    }
+
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = statusBg,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = statusIcon,
+                                contentDescription = null,
+                                tint = statusContentColor,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = statusText,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = statusContentColor
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    // Row 1: Accessibility Service Status & Open Settings
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(pillInactiveBg)
+                            .padding(12.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                            Icon(
+                                imageVector = if (isAccessibilityActive) Icons.Default.CheckCircle else Icons.Default.Cancel,
+                                contentDescription = null,
+                                tint = if (isAccessibilityActive) MintGreen else AlertRed,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Column {
+                                Text(
+                                    text = AppStrings.accessibilityServiceTitle(lang),
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = textPrimary
+                                )
+                                Text(
+                                    text = if (isAccessibilityActive) AppStrings.accessibilityActive(lang) else AppStrings.accessibilityInactive(lang),
+                                    fontSize = 11.sp,
+                                    color = if (isAccessibilityActive) MintGreen else AlertRed
+                                )
+                            }
+                        }
+
+                        if (!isAccessibilityActive) {
+                            Button(
+                                onClick = {
+                                    try {
+                                        val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
+                                        intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                                        context.startActivity(intent)
+                                    } catch (_: Exception) {}
+                                },
+                                shape = RoundedCornerShape(8.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = RoyalBlue),
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                                modifier = Modifier.testTag("button_open_accessibility_settings")
+                            ) {
+                                Text(
+                                    text = AppStrings.openAccessibilitySettings(lang),
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    // Row 2: Manage Blocked Apps Action
+                    OutlinedButton(
+                        onClick = { showAppPickerSheet = true },
+                        shape = RoundedCornerShape(10.dp),
+                        border = BorderStroke(1.dp, borderCol),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("button_manage_blocked_apps")
+                    ) {
+                        Icon(Icons.Default.Apps, contentDescription = null, modifier = Modifier.size(16.dp), tint = RoyalBlue)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "${AppStrings.manageBlockedApps(lang)} (${blockedApps.size})",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = textPrimary
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    // Privacy Note
+                    Text(
+                        text = AppStrings.accessibilityExplanation(lang),
+                        fontSize = 10.sp,
+                        color = textSecondary,
+                        lineHeight = 14.sp
+                    )
+                }
+            }
+        }
+
+        // 8. Real Android Push / System Notifications Card
+        item {
+            StudyHubCard(
+                modifier = Modifier.fillMaxWidth(),
+                backgroundColor = cardBg,
+                borderColor = borderCol
             ) {
                 Column(modifier = Modifier.padding(18.dp)) {
                     Row(
@@ -414,120 +815,85 @@ fun FocusTimerScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                imageVector = Icons.Default.Security,
-                                contentDescription = null,
-                                tint = MintGreen,
-                                modifier = Modifier.size(20.dp)
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                text = if (lang == AppLanguage.BANGLA) "ডিসট্রাকশন কন্ট্রোল ও অ্যাপ ব্লকিং" else "Distraction Control & App Blocking",
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = textPrimary
-                            )
-                        }
-
-                        TextButton(onClick = { showAddScheduleDialog = true }) {
-                            Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(if (lang == AppLanguage.BANGLA) "নিয়ম যোগ করুন" else "Add Rule", fontSize = 12.sp)
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(10.dp))
-
-                    // Usage Access Permission Banner
-                    val permissionGranted = remember { viewModel.hasUsageAccessPermission() }
-                    Surface(
-                        color = if (permissionGranted) MintGreen.copy(alpha = 0.12f) else AlertRed.copy(alpha = 0.12f),
-                        shape = RoundedCornerShape(8.dp),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(12.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                imageVector = if (permissionGranted) Icons.Default.CheckCircle else Icons.Default.WarningAmber,
-                                contentDescription = null,
-                                tint = if (permissionGranted) MintGreen else AlertRed,
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Spacer(modifier = Modifier.width(10.dp))
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = if (permissionGranted) {
-                                        if (lang == AppLanguage.BANGLA) "ইউসেজ এক্সেস অনুমতি সক্রিয়" else "Usage Access Permission: Granted"
-                                    } else {
-                                        if (lang == AppLanguage.BANGLA) "অ্যাপ ব্লকিংয়ের জন্য ইউসেজ এক্সেস প্রয়োজন" else "Usage Access Required for App Blocking"
-                                    },
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = if (permissionGranted) MintGreen else AlertRed
-                                )
-                                Text(
-                                    text = if (permissionGranted) {
-                                        if (lang == AppLanguage.BANGLA) "ফোকাস চলাকালীন নির্ধারিত অ্যাপসমূহ সফলভাবে ফিল্টার করা হচ্ছে।" else "Restricted apps are actively monitored during scheduled focus periods."
-                                    } else {
-                                        if (lang == AppLanguage.BANGLA) "ট্যাপ করে সিস্টেম সেটিংসে ইউসেজ এক্সেস পারমিশন দিন।" else "Tap to open system settings and grant Usage Access permission."
-                                    },
-                                    fontSize = 11.sp,
-                                    color = textSecondary
-                                )
-                            }
-                            if (!permissionGranted) {
-                                Button(
-                                    onClick = {
-                                        try {
-                                            val intent = Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)
-                                            intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
-                                            context.startActivity(intent)
-                                        } catch (e: Exception) {
-                                            // fallback
-                                        }
-                                    },
-                                    colors = ButtonDefaults.buttonColors(containerColor = RoyalBlue),
-                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
-                                ) {
-                                    Text(if (lang == AppLanguage.BANGLA) "অনুমতি দিন" else "Grant", fontSize = 11.sp)
-                                }
-                            }
-                        }
-                    }
-
-                    if (focusSchedules.isNotEmpty()) {
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Text(
-                            text = if (lang == AppLanguage.BANGLA) "সক্রিয় ব্লকিং শিডিউল:" else "Active Blocking Schedules:",
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = textSecondary
-                        )
-                        Spacer(modifier = Modifier.height(6.dp))
-                        focusSchedules.forEach { sched ->
-                            Row(
+                            Box(
                                 modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 4.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
+                                    .size(32.dp)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(RoyalBlue.copy(alpha = 0.12f)),
+                                contentAlignment = Alignment.Center
                             ) {
-                                val startHour = sched.startTime / 60
-                                val startMin = sched.startTime % 60
-                                val endHour = sched.endTime / 60
-                                val endMin = sched.endTime % 60
+                                Icon(
+                                    imageVector = Icons.Default.NotificationsActive,
+                                    contentDescription = null,
+                                    tint = RoyalBlue,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Column {
                                 Text(
-                                    text = "🕒 %02d:%02d - %02d:%02d (%d apps)".format(startHour, startMin, endHour, endMin, sched.restrictedApps.size),
-                                    fontSize = 12.sp,
+                                    text = AppStrings.notificationPermissionTitle(lang),
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Bold,
                                     color = textPrimary
                                 )
-                                Switch(
-                                    checked = sched.isEnabled,
-                                    onCheckedChange = { enabled ->
-                                        viewModel.updateFocusSchedule(sched.copy(isEnabled = enabled))
-                                    }
+                                Text(
+                                    text = if (hasNotifPermission) AppStrings.notificationPermissionGranted(lang) else AppStrings.notificationPermissionRequired(lang),
+                                    fontSize = 11.sp,
+                                    color = if (hasNotifPermission) MintGreen else AmberWarning
+                                )
+                            }
+                        }
+
+                        if (!hasNotifPermission && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                            Button(
+                                onClick = {
+                                    notifPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+                                },
+                                shape = RoundedCornerShape(8.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = RoyalBlue),
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                                modifier = Modifier.testTag("button_request_notification_permission")
+                            ) {
+                                Text(AppStrings.grantPermission(lang), fontSize = 11.sp)
+                            }
+                        } else {
+                            OutlinedButton(
+                                onClick = {
+                                    viewModel.sendTestSystemNotification(context)
+                                    testNotifSentBanner = true
+                                },
+                                shape = RoundedCornerShape(8.dp),
+                                border = BorderStroke(1.dp, borderCol),
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                modifier = Modifier.testTag("button_test_system_notification")
+                            ) {
+                                Icon(Icons.Default.Send, contentDescription = null, modifier = Modifier.size(14.dp), tint = RoyalBlue)
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(AppStrings.sendTestNotification(lang), fontSize = 11.sp, color = textPrimary)
+                            }
+                        }
+                    }
+
+                    AnimatedVisibility(visible = testNotifSentBanner) {
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = MintGreen.copy(alpha = 0.12f),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 10.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(10.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(Icons.Default.CheckCircle, contentDescription = null, tint = MintGreen, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = AppStrings.testNotificationSent(lang),
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MintGreen
                                 )
                             }
                         }
@@ -536,7 +902,7 @@ fun FocusTimerScreen(
             }
         }
 
-        // Bottom Card: "Today's Progress" (Real live session data)
+        // 9. Today's Progress Card (Live Stats)
         item {
             val formattedToday = AppStrings.formatDuration(stats.todayStudySeconds, lang)
             val todayProgress = (stats.todayStudySeconds.toFloat() / 14400f).coerceIn(0f, 1f)
@@ -544,7 +910,7 @@ fun FocusTimerScreen(
             StudyHubCard(
                 modifier = Modifier.fillMaxWidth(),
                 backgroundColor = cardBg,
-                borderColor = DarkBorder
+                borderColor = borderCol
             ) {
                 Column(modifier = Modifier.padding(18.dp)) {
                     Text(
@@ -555,14 +921,27 @@ fun FocusTimerScreen(
 
                     Spacer(modifier = Modifier.height(6.dp))
 
-                    Text(
-                        text = if (lang == AppLanguage.BANGLA) "$formattedToday / ৪ ঘণ্টা" else "$formattedToday / 4h",
-                        style = MaterialTheme.typography.titleMedium.copy(
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.Bottom
+                    ) {
+                        Text(
+                            text = if (lang == AppLanguage.BANGLA) "$formattedToday / ৪ ঘণ্টা লক্ষ্য" else "$formattedToday / 4h Goal",
+                            style = MaterialTheme.typography.titleMedium.copy(
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 16.sp
+                            ),
+                            color = textPrimary
+                        )
+
+                        Text(
+                            text = "${(todayProgress * 100).toInt()}%",
+                            fontSize = 13.sp,
                             fontWeight = FontWeight.Bold,
-                            fontSize = 16.sp
-                        ),
-                        color = textPrimary
-                    )
+                            color = RoyalBlue
+                        )
+                    }
 
                     Spacer(modifier = Modifier.height(10.dp))
 
@@ -573,131 +952,116 @@ fun FocusTimerScreen(
                             .height(6.dp)
                             .clip(RoundedCornerShape(3.dp)),
                         color = RoyalBlue,
-                        trackColor = Color(0xFF1E2C46)
+                        trackColor = if (isDarkTheme) Color(0xFF1E2C46) else Color(0xFFE2E8F0)
                     )
                 }
             }
         }
     }
 
-    // Add Focus Schedule Dialog
-    if (showAddScheduleDialog) {
-        var startHour by remember { mutableStateOf("09") }
-        var startMin by remember { mutableStateOf("00") }
-        var endHour by remember { mutableStateOf("12") }
-        var endMin by remember { mutableStateOf("00") }
-        var appListStr by remember { mutableStateOf("com.facebook.katana, com.instagram.android, com.zhiliaoapp.musically") }
+    // --- MODALS & DIALOGS ---
 
+    // 1. App Picker Dialog (Lists installed launchable apps for blocking)
+    if (showAppPickerSheet) {
+        InstalledAppsPickerDialog(
+            context = context,
+            initialBlockedApps = blockedApps,
+            isDarkTheme = isDarkTheme,
+            lang = lang,
+            onDismiss = { showAppPickerSheet = false },
+            onSave = { updatedApps ->
+                viewModel.setBlockedApps(updatedApps)
+                showAppPickerSheet = false
+            }
+        )
+    }
+
+    // 2. Custom Duration Dialog (1–240 minutes)
+    if (showCustomDurationDialog) {
+        CustomDurationDialog(
+            initialMinutes = customTimerMinutes,
+            isDarkTheme = isDarkTheme,
+            lang = lang,
+            onDismiss = { showCustomDurationDialog = false },
+            onApply = { newMinutes ->
+                viewModel.setCustomTimerMinutes(newMinutes)
+                showCustomDurationDialog = false
+            }
+        )
+    }
+
+    // 3. Subject & Chapter Selector Dialog
+    if (showSubjectPickerSheet) {
+        SubjectChapterPickerDialog(
+            subjects = subjects,
+            chapters = chapters,
+            selectedSubjectId = timerState.selectedSubjectId,
+            selectedChapterId = timerState.selectedChapterId,
+            isDarkTheme = isDarkTheme,
+            lang = lang,
+            onDismiss = { showSubjectPickerSheet = false },
+            onSelect = { subId, chapId ->
+                viewModel.selectTimerSubject(subId)
+                viewModel.selectTimerChapter(chapId)
+                showSubjectPickerSheet = false
+            }
+        )
+    }
+
+    // 4. Discard/Restart Confirmation Dialog
+    if (showDiscardConfirmDialog) {
         AlertDialog(
-            onDismissRequest = { showAddScheduleDialog = false },
+            onDismissRequest = { showDiscardConfirmDialog = false },
             containerColor = cardBg,
             title = {
                 Text(
-                    text = if (lang == AppLanguage.BANGLA) "নতুন ফোকাস শিডিউল যোগ করুন" else "Add Focus Schedule",
+                    text = AppStrings.discardConfirmTitle(lang),
                     fontWeight = FontWeight.Bold,
                     color = textPrimary
                 )
             },
             text = {
-                Column(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    Text(
-                        text = if (lang == AppLanguage.BANGLA) "সময়সীমা (ঘণ্টা:মিনিট)" else "Time Range (24h format)",
-                        fontSize = 12.sp,
-                        color = textSecondary
-                    )
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        OutlinedTextField(
-                            value = startHour,
-                            onValueChange = { startHour = it },
-                            label = { Text("Start HH") },
-                            modifier = Modifier.weight(1f),
-                            singleLine = true
-                        )
-                        OutlinedTextField(
-                            value = startMin,
-                            onValueChange = { startMin = it },
-                            label = { Text("Start MM") },
-                            modifier = Modifier.weight(1f),
-                            singleLine = true
-                        )
-                    }
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        OutlinedTextField(
-                            value = endHour,
-                            onValueChange = { endHour = it },
-                            label = { Text("End HH") },
-                            modifier = Modifier.weight(1f),
-                            singleLine = true
-                        )
-                        OutlinedTextField(
-                            value = endMin,
-                            onValueChange = { endMin = it },
-                            label = { Text("End MM") },
-                            modifier = Modifier.weight(1f),
-                            singleLine = true
-                        )
-                    }
-
-                    OutlinedTextField(
-                        value = appListStr,
-                        onValueChange = { appListStr = it },
-                        label = { Text(if (lang == AppLanguage.BANGLA) "ব্লক করার অ্যাপ প্যাকেজ (কমা দিয়ে আলাদা করুন)" else "Restricted App Package Names (comma separated)") },
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                }
+                Text(
+                    text = AppStrings.discardConfirmMessage(lang),
+                    color = textSecondary,
+                    fontSize = 13.sp
+                )
             },
             confirmButton = {
                 Button(
                     onClick = {
-                        val sh = startHour.toIntOrNull() ?: 9
-                        val sm = startMin.toIntOrNull() ?: 0
-                        val eh = endHour.toIntOrNull() ?: 12
-                        val em = endMin.toIntOrNull() ?: 0
-                        val startMinutes = sh * 60 + sm
-                        val endMinutes = eh * 60 + em
-                        val apps = appListStr.split(",").map { it.trim() }.filter { it.isNotBlank() }
-
-                        viewModel.addFocusSchedule(
-                            days = listOf(1, 2, 3, 4, 5, 6, 7),
-                            startMin = startMinutes,
-                            endMin = endMinutes,
-                            apps = apps.ifEmpty { listOf("com.facebook.katana") }
-                        )
-                        showAddScheduleDialog = false
+                        viewModel.resetTimer()
+                        showDiscardConfirmDialog = false
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = RoyalBlue)
+                    colors = ButtonDefaults.buttonColors(containerColor = AlertRed),
+                    modifier = Modifier.testTag("button_confirm_restart")
                 ) {
-                    Text(if (lang == AppLanguage.BANGLA) "সংরক্ষণ" else "Save")
+                    Text(AppStrings.restartTimer(lang), color = Color.White)
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showAddScheduleDialog = false }) {
-                    Text(if (lang == AppLanguage.BANGLA) "বাতিল" else "Cancel", color = textSecondary)
+                TextButton(onClick = { showDiscardConfirmDialog = false }) {
+                    Text(AppStrings.cancelAction(lang), color = textSecondary)
                 }
             }
         )
     }
 
-    // Session Completion Summary Dialog
+    // 5. Session Complete Summary Dialog
     if (showSessionCompleteDialog) {
         AlertDialog(
             onDismissRequest = { showSessionCompleteDialog = false },
             containerColor = cardBg,
             title = {
-                Text(
-                    text = if (lang == AppLanguage.BANGLA) "স্টাডি সেশন সম্পন্ন!" else "Focus Session Completed!",
-                    fontWeight = FontWeight.Bold,
-                    color = textPrimary
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.EmojiEvents, contentDescription = null, tint = AmberWarning, modifier = Modifier.size(24.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = if (lang == AppLanguage.BANGLA) "সেশন সফলভাবে সম্পন্ন!" else "Focus Session Complete!",
+                        fontWeight = FontWeight.Bold,
+                        color = textPrimary
+                    )
+                }
             },
             text = {
                 Column(
@@ -706,9 +1070,9 @@ fun FocusTimerScreen(
                 ) {
                     Text(
                         text = if (lang == AppLanguage.BANGLA)
-                            "দারুণ ফোকাস! আপনার সেশন সফলভাবে সংরক্ষিত হয়েছে।"
+                            "অসাধারণ মনোযোগ! সেশনের বিবরণ এবং অগ্রগতি সফলভাবে ডাটাবেজে সংরক্ষণ করা হয়েছে।"
                         else
-                            "Great focus! Your session has been recorded successfully.",
+                            "Great job staying in the zone! Your focus duration and study stats have been recorded.",
                         fontSize = 13.sp,
                         color = textSecondary
                     )
@@ -722,7 +1086,7 @@ fun FocusTimerScreen(
                         color = textPrimary
                     )
 
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         for (star in 1..5) {
                             IconButton(
                                 onClick = { productivityRating = star },
@@ -731,7 +1095,7 @@ fun FocusTimerScreen(
                                 Icon(
                                     imageVector = Icons.Default.Star,
                                     contentDescription = null,
-                                    tint = if (star <= productivityRating) Color(0xFFFFD700) else textSecondary
+                                    tint = if (star <= productivityRating) AmberWarning else textSecondary
                                 )
                             }
                         }
@@ -740,21 +1104,530 @@ fun FocusTimerScreen(
                     OutlinedTextField(
                         value = sessionNotes,
                         onValueChange = { sessionNotes = it },
-                        label = { Text(if (lang == AppLanguage.BANGLA) "নোট বা অগ্রগতি (ঐচ্ছিক)" else "Notes / Progress Summary (Optional)") },
+                        label = { Text(if (lang == AppLanguage.BANGLA) "নোট বা অগ্রগতি (ঐচ্ছিক)" else "Notes / Topics Covered (Optional)") },
                         modifier = Modifier.fillMaxWidth()
                     )
                 }
             },
             confirmButton = {
                 Button(
-                    onClick = {
-                        showSessionCompleteDialog = false
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = RoyalBlue)
+                    onClick = { showSessionCompleteDialog = false },
+                    colors = ButtonDefaults.buttonColors(containerColor = RoyalBlue),
+                    modifier = Modifier.testTag("button_done_session_summary")
                 ) {
-                    Text(if (lang == AppLanguage.BANGLA) "ঠিক আছে" else "Done")
+                    Text(AppStrings.doneAction(lang))
                 }
             }
         )
+    }
+}
+
+/**
+ * Dialog to select installed apps for Distraction Blocker
+ */
+@Composable
+fun InstalledAppsPickerDialog(
+    context: Context,
+    initialBlockedApps: Set<String>,
+    isDarkTheme: Boolean,
+    lang: AppLanguage,
+    onDismiss: () -> Unit,
+    onSave: (Set<String>) -> Unit
+) {
+    var searchQuery by remember { mutableStateOf("") }
+    var selectedApps by remember { mutableStateOf(initialBlockedApps.toMutableSet()) }
+    var installedApps by remember { mutableStateOf<List<InstalledAppItem>>(emptyList()) }
+    var isLoading by remember { mutableStateOf(true) }
+
+    LaunchedEffect(Unit) {
+        withContext(Dispatchers.IO) {
+            val pm = context.packageManager
+            val mainIntent = Intent(Intent.ACTION_MAIN, null).apply {
+                addCategory(Intent.CATEGORY_LAUNCHER)
+            }
+            val pkgAppsList: List<ResolveInfo> = pm.queryIntentActivities(mainIntent, 0)
+
+            val ownPackage = context.packageName
+            val apps = pkgAppsList.mapNotNull { resolveInfo ->
+                val pkgName = resolveInfo.activityInfo.packageName
+                if (pkgName == ownPackage || StudyHubAccessibilityService.SYSTEM_WHITELIST.contains(pkgName)) {
+                    null
+                } else {
+                    val appLabel = resolveInfo.loadLabel(pm).toString()
+                    val icon = try { resolveInfo.loadIcon(pm) } catch (_: Exception) { null }
+                    InstalledAppItem(pkgName, appLabel, icon)
+                }
+            }.distinctBy { it.packageName }.sortedBy { it.appName.lowercase() }
+
+            installedApps = apps
+            isLoading = false
+        }
+    }
+
+    val cardBg = if (isDarkTheme) DarkMidnightSurface else Color.White
+    val textPrimary = if (isDarkTheme) DarkTextWhite else SlateDark
+    val textSecondary = if (isDarkTheme) DarkTextMuted else SlateMuted
+    val borderCol = if (isDarkTheme) DarkBorder else SlateBorder
+
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            shape = RoundedCornerShape(16.dp),
+            color = cardBg,
+            border = BorderStroke(1.dp, borderCol),
+            modifier = Modifier
+                .fillMaxWidth()
+                .fillMaxHeight(0.85f)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(18.dp)
+            ) {
+                // Title & Count
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text(
+                            text = AppStrings.selectAppsToBlock(lang),
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = textPrimary
+                        )
+                        Text(
+                            text = "${selectedApps.size} apps selected",
+                            fontSize = 11.sp,
+                            color = textSecondary
+                        )
+                    }
+
+                    IconButton(onClick = onDismiss) {
+                        Icon(Icons.Default.Close, contentDescription = "Close", tint = textSecondary)
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                // Search field
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    placeholder = { Text(AppStrings.searchApps(lang), fontSize = 12.sp) },
+                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(18.dp)) },
+                    trailingIcon = {
+                        if (searchQuery.isNotEmpty()) {
+                            IconButton(onClick = { searchQuery = "" }) {
+                                Icon(Icons.Default.Clear, contentDescription = null, modifier = Modifier.size(16.dp))
+                            }
+                        }
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("input_search_apps"),
+                    singleLine = true
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Select All / Clear All buttons
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    TextButton(onClick = {
+                        val all = installedApps.map { it.packageName }.toSet()
+                        selectedApps = all.toMutableSet()
+                    }) {
+                        Text(AppStrings.selectAll(lang), fontSize = 12.sp)
+                    }
+
+                    TextButton(onClick = {
+                        selectedApps = mutableSetOf()
+                    }) {
+                        Text(AppStrings.clearAll(lang), fontSize = 12.sp, color = AlertRed)
+                    }
+                }
+
+                Divider(color = borderCol)
+
+                // List of Apps
+                if (isLoading) {
+                    Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator(color = RoyalBlue)
+                    }
+                } else {
+                    val filteredApps = installedApps.filter {
+                        it.appName.contains(searchQuery, ignoreCase = true) ||
+                                it.packageName.contains(searchQuery, ignoreCase = true)
+                    }
+
+                    LazyColumn(
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("list_installed_apps"),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        items(filteredApps, key = { it.packageName }) { appItem ->
+                            val isChecked = selectedApps.contains(appItem.packageName)
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .clickable {
+                                        val newSet = selectedApps.toMutableSet()
+                                        if (isChecked) newSet.remove(appItem.packageName)
+                                        else newSet.add(appItem.packageName)
+                                        selectedApps = newSet
+                                    }
+                                    .padding(horizontal = 8.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                if (appItem.icon != null) {
+                                    val bitmap = remember(appItem.packageName) {
+                                        try { appItem.icon.toBitmap(96, 96).asImageBitmap() } catch (_: Exception) { null }
+                                    }
+                                    if (bitmap != null) {
+                                        Image(
+                                            bitmap = bitmap,
+                                            contentDescription = null,
+                                            modifier = Modifier
+                                                .size(36.dp)
+                                                .clip(RoundedCornerShape(8.dp))
+                                        )
+                                    } else {
+                                        Icon(Icons.Default.Android, contentDescription = null, modifier = Modifier.size(36.dp), tint = textSecondary)
+                                    }
+                                } else {
+                                    Icon(Icons.Default.Android, contentDescription = null, modifier = Modifier.size(36.dp), tint = textSecondary)
+                                }
+
+                                Spacer(modifier = Modifier.width(12.dp))
+
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = appItem.appName,
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = textPrimary,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Text(
+                                        text = appItem.packageName,
+                                        fontSize = 10.sp,
+                                        color = textSecondary,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+
+                                Checkbox(
+                                    checked = isChecked,
+                                    onCheckedChange = { checked ->
+                                        val newSet = selectedApps.toMutableSet()
+                                        if (checked) newSet.add(appItem.packageName)
+                                        else newSet.remove(appItem.packageName)
+                                        selectedApps = newSet
+                                    },
+                                    colors = CheckboxDefaults.colors(checkedColor = RoyalBlue)
+                                )
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                // Bottom Done Button
+                Button(
+                    onClick = { onSave(selectedApps) },
+                    shape = RoundedCornerShape(10.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = RoyalBlue),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp)
+                        .testTag("button_save_blocked_apps")
+                ) {
+                    Text(AppStrings.doneAction(lang), fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Custom Duration Dialog (1 to 240 mins)
+ */
+@Composable
+fun CustomDurationDialog(
+    initialMinutes: Int,
+    isDarkTheme: Boolean,
+    lang: AppLanguage,
+    onDismiss: () -> Unit,
+    onApply: (Int) -> Unit
+) {
+    var minutesValue by remember { mutableFloatStateOf(initialMinutes.toFloat()) }
+    var textInput by remember { mutableStateOf(initialMinutes.toString()) }
+
+    val cardBg = if (isDarkTheme) DarkMidnightSurface else Color.White
+    val textPrimary = if (isDarkTheme) DarkTextWhite else SlateDark
+    val textSecondary = if (isDarkTheme) DarkTextMuted else SlateMuted
+    val borderCol = if (isDarkTheme) DarkBorder else SlateBorder
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = cardBg,
+        title = {
+            Text(
+                text = AppStrings.customDurationTitle(lang),
+                fontWeight = FontWeight.Bold,
+                color = textPrimary
+            )
+        },
+        text = {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                Text(
+                    text = AppStrings.customDurationPrompt(lang),
+                    fontSize = 12.sp,
+                    color = textSecondary
+                )
+
+                // Large Number display
+                Text(
+                    text = "${AppStrings.formatNumber(minutesValue.toInt(), lang)} ${AppStrings.minutesLabel(lang)}",
+                    style = MaterialTheme.typography.headlineMedium.copy(
+                        fontWeight = FontWeight.Bold,
+                        color = RoyalBlue
+                    )
+                )
+
+                // Slider from 1 to 240 mins
+                Slider(
+                    value = minutesValue,
+                    onValueChange = {
+                        minutesValue = it
+                        textInput = it.toInt().toString()
+                    },
+                    valueRange = 1f..240f,
+                    steps = 238,
+                    colors = SliderDefaults.colors(
+                        thumbColor = RoyalBlue,
+                        activeTrackColor = RoyalBlue
+                    )
+                )
+
+                // Quick preset tags
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    listOf(15, 30, 50, 75, 120).forEach { m ->
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = if (minutesValue.toInt() == m) RoyalBlue else (if (isDarkTheme) Color(0xFF1E2C46) else Color(0xFFEDF2F7)),
+                            border = BorderStroke(1.dp, borderCol),
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(12.dp))
+                                .clickable {
+                                    minutesValue = m.toFloat()
+                                    textInput = m.toString()
+                                }
+                        ) {
+                            Text(
+                                text = "${m}m",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (minutesValue.toInt() == m) Color.White else textSecondary,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = { onApply(minutesValue.toInt().coerceIn(1, 240)) },
+                colors = ButtonDefaults.buttonColors(containerColor = RoyalBlue),
+                modifier = Modifier.testTag("button_apply_custom_duration")
+            ) {
+                Text(AppStrings.applyAction(lang))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(AppStrings.cancelAction(lang), color = textSecondary)
+            }
+        }
+    )
+}
+
+/**
+ * Subject & Chapter Picker Dialog
+ */
+@Composable
+fun SubjectChapterPickerDialog(
+    subjects: List<SubjectEntity>,
+    chapters: List<ChapterEntity>,
+    selectedSubjectId: Long?,
+    selectedChapterId: Long?,
+    isDarkTheme: Boolean,
+    lang: AppLanguage,
+    onDismiss: () -> Unit,
+    onSelect: (Long?, Long?) -> Unit
+) {
+    val cardBg = if (isDarkTheme) DarkMidnightSurface else Color.White
+    val textPrimary = if (isDarkTheme) DarkTextWhite else SlateDark
+    val textSecondary = if (isDarkTheme) DarkTextMuted else SlateMuted
+    val borderCol = if (isDarkTheme) DarkBorder else SlateBorder
+
+    var tempSubjectId by remember { mutableStateOf(selectedSubjectId) }
+    var tempChapterId by remember { mutableStateOf(selectedChapterId) }
+
+    val relevantChapters = chapters.filter { it.subjectId == (tempSubjectId ?: -1L) }
+
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            shape = RoundedCornerShape(16.dp),
+            color = cardBg,
+            border = BorderStroke(1.dp, borderCol),
+            modifier = Modifier
+                .fillMaxWidth()
+                .fillMaxHeight(0.7f)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(18.dp)
+            ) {
+                Text(
+                    text = AppStrings.selectSubject(lang),
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = textPrimary
+                )
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                LazyColumn(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    // Option 0: General Focus
+                    item {
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = if (tempSubjectId == null) RoyalBlue.copy(alpha = 0.15f) else Color.Transparent,
+                            border = BorderStroke(1.dp, if (tempSubjectId == null) RoyalBlue else borderCol),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(10.dp))
+                                .clickable {
+                                    tempSubjectId = null
+                                    tempChapterId = null
+                                }
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(Icons.Default.AllInclusive, contentDescription = null, tint = RoyalBlue)
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Text(
+                                    text = if (lang == AppLanguage.BANGLA) "সাধারণ ফোকাস (কোনো বিষয় নয়)" else "General Focus (No subject)",
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = textPrimary
+                                )
+                            }
+                        }
+                    }
+
+                    items(subjects) { sub ->
+                        val isSel = tempSubjectId == sub.id
+                        val name = if (lang == AppLanguage.BANGLA && sub.nameBn.isNotBlank()) sub.nameBn else sub.nameEn
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = if (isSel) RoyalBlue.copy(alpha = 0.15f) else Color.Transparent,
+                            border = BorderStroke(1.dp, if (isSel) RoyalBlue else borderCol),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(10.dp))
+                                .clickable {
+                                    tempSubjectId = sub.id
+                                    tempChapterId = null
+                                }
+                        ) {
+                            Column(modifier = Modifier.padding(12.dp)) {
+                                Text(
+                                    text = name,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = textPrimary
+                                )
+
+                                if (isSel && relevantChapters.isNotEmpty()) {
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Text(
+                                        text = AppStrings.selectChapter(lang),
+                                        fontSize = 11.sp,
+                                        color = textSecondary
+                                    )
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    relevantChapters.forEach { ch ->
+                                        val isChSel = tempChapterId == ch.id
+                                        val chTitle = if (lang == AppLanguage.BANGLA && ch.titleBn.isNotBlank()) ch.titleBn else ch.titleEn
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .clip(RoundedCornerShape(6.dp))
+                                                .clickable { tempChapterId = ch.id }
+                                                .padding(vertical = 4.dp, horizontal = 6.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            RadioButton(
+                                                selected = isChSel,
+                                                onClick = { tempChapterId = ch.id },
+                                                colors = RadioButtonDefaults.colors(selectedColor = RoyalBlue)
+                                            )
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text(
+                                                text = chTitle,
+                                                fontSize = 12.sp,
+                                                color = if (isChSel) RoyalBlue else textSecondary
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    TextButton(onClick = onDismiss) {
+                        Text(AppStrings.cancelAction(lang), color = textSecondary)
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Button(
+                        onClick = { onSelect(tempSubjectId, tempChapterId) },
+                        colors = ButtonDefaults.buttonColors(containerColor = RoyalBlue),
+                        modifier = Modifier.testTag("button_confirm_subject_selection")
+                    ) {
+                        Text(AppStrings.doneAction(lang))
+                    }
+                }
+            }
+        }
     }
 }

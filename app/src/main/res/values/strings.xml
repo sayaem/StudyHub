@@ -1,3 +1,4 @@
 <resources>
     <string name="app_name">StudyHub</string>
+    <string name="accessibility_service_description">StudyHub Focus Mode uses this service to detect when you open selected distracting applications during an active focus session, helping you stay on track with your study goals.</string>
 </resources>

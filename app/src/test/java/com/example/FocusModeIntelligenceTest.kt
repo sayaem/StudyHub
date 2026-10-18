@@ -86,4 +86,62 @@ class FocusModeIntelligenceTest {
         assertEquals(0, session.interruptionCount)
         assertEquals("POMODORO", session.sessionType)
     }
+
+    @Test
+    fun `blocked apps persistence and interruption counter work correctly`() {
+        val testApps = setOf("com.facebook.katana", "com.instagram.android", "com.google.android.youtube")
+        prefsManager.blockedApps = testApps
+        prefsManager.isDistractionBlockerEnabled = true
+
+        assertEquals(3, prefsManager.blockedApps.size)
+        assertTrue(prefsManager.blockedApps.contains("com.facebook.katana"))
+        assertTrue(prefsManager.isDistractionBlockerEnabled)
+
+        // Record interruption
+        prefsManager.resetInterruptionCount()
+        assertEquals(0, prefsManager.interruptionCount)
+
+        prefsManager.recordInterruption("com.facebook.katana")
+        assertEquals(1, prefsManager.interruptionCount)
+        assertEquals("com.facebook.katana", prefsManager.lastBlockedPackage)
+
+        prefsManager.recordInterruption("com.instagram.android")
+        assertEquals(2, prefsManager.interruptionCount)
+        assertEquals("com.instagram.android", prefsManager.lastBlockedPackage)
+
+        prefsManager.resetInterruptionCount()
+        assertEquals(0, prefsManager.interruptionCount)
+    }
+
+    @Test
+    fun `custom timer duration clamps between 1 and 240 minutes`() {
+        prefsManager.customTimerMinutes = 50
+        assertEquals(50, prefsManager.customTimerMinutes)
+
+        prefsManager.customTimerMinutes = 0
+        assertEquals(1, prefsManager.customTimerMinutes)
+
+        prefsManager.customTimerMinutes = 500
+        assertEquals(240, prefsManager.customTimerMinutes)
+    }
+
+    @Test
+    fun `accessibility whitelist includes critical system packages`() {
+        val whitelist = com.example.service.StudyHubAccessibilityService.SYSTEM_WHITELIST
+        assertTrue(whitelist.contains("com.android.settings"))
+        assertTrue(whitelist.contains("com.android.systemui"))
+        assertTrue(whitelist.contains("com.android.phone"))
+        assertTrue(whitelist.contains("com.google.android.dialer"))
+    }
+
+    @Test
+    fun `notification channels initialize without error`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        com.example.notification.StudyHubNotificationHelper.initNotificationChannels(context)
+        // Verify channel creation succeeds
+        val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+        val focusChannel = notificationManager.getNotificationChannel(com.example.notification.StudyHubNotificationHelper.CHANNEL_FOCUS)
+        assertNotNull(focusChannel)
+        assertEquals("Focus Sessions", focusChannel.name)
+    }
 }

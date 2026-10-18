@@ -19,6 +19,8 @@ import com.example.data.model.RevisionItemEntity
 import com.example.data.model.StudySessionEntity
 import com.example.data.model.SubjectEntity
 import com.example.data.repository.StudyHubRepository
+import com.example.notification.StudyHubNotificationHelper
+import com.example.service.StudyHubAccessibilityService
 import com.example.util.AppLanguage
 import com.example.util.PreferencesManager
 import kotlinx.coroutines.Job
@@ -34,6 +36,11 @@ import java.util.Calendar
 
 enum class BottomTab {
     HOME, SYLLABUS, FOCUS, CALENDAR, PROFILE
+}
+
+enum class CalendarHubTab {
+    STUDY_PLANNER,
+    ADMISSION_CALENDAR
 }
 
 enum class ScreenDestination {
@@ -210,16 +217,46 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _currentTab = MutableStateFlow(BottomTab.HOME)
     val currentTab: StateFlow<BottomTab> = _currentTab.asStateFlow()
 
+    private var previousScreen: ScreenDestination = ScreenDestination.HOME
+
+    // Unified Calendar Hub Tab State (Study Planner vs Admission Calendar)
+    private val _calendarHubTab = MutableStateFlow(CalendarHubTab.STUDY_PLANNER)
+    val calendarHubTab: StateFlow<CalendarHubTab> = _calendarHubTab.asStateFlow()
+
+    fun setCalendarHubTab(tab: CalendarHubTab) {
+        _calendarHubTab.value = tab
+    }
+
+    fun openCalendarWithTab(tab: CalendarHubTab, timeRange: String = "TODAY") {
+        _calendarHubTab.value = tab
+        if (tab == CalendarHubTab.STUDY_PLANNER) {
+            setPlannerTimeRange(timeRange)
+        }
+        navigateTo(ScreenDestination.CALENDAR)
+    }
+
     fun navigateTo(destination: ScreenDestination) {
+        if (_currentScreen.value != destination) {
+            previousScreen = _currentScreen.value
+        }
         _currentScreen.value = destination
         when (destination) {
             ScreenDestination.HOME, ScreenDestination.NOTIFICATIONS, ScreenDestination.MOCK_TESTS, ScreenDestination.MISTAKE_BOOK -> _currentTab.value = BottomTab.HOME
             ScreenDestination.SYLLABUS, ScreenDestination.SUBJECT_DETAILS, ScreenDestination.REVISION_TRACKER -> _currentTab.value = BottomTab.SYLLABUS
             ScreenDestination.FOCUS -> _currentTab.value = BottomTab.FOCUS
-            ScreenDestination.CALENDAR, ScreenDestination.SMART_PLANNER -> _currentTab.value = BottomTab.CALENDAR
+            ScreenDestination.CALENDAR -> _currentTab.value = BottomTab.CALENDAR
+            ScreenDestination.SMART_PLANNER -> {
+                _calendarHubTab.value = CalendarHubTab.STUDY_PLANNER
+                _plannerTimeRange.value = "TODAY"
+                _currentTab.value = BottomTab.CALENDAR
+            }
             ScreenDestination.PROFILE, ScreenDestination.PROGRESS_ANALYTICS, ScreenDestination.ABOUT, ScreenDestination.DATA_MANAGEMENT -> _currentTab.value = BottomTab.PROFILE
             else -> {}
         }
+    }
+
+    fun navigateBack() {
+        navigateTo(previousScreen)
     }
 
     fun selectTab(tab: BottomTab) {
@@ -417,34 +454,67 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _suggestedDailyPlan = MutableStateFlow<List<com.example.domain.intelligence.DailyPlanSuggestion>>(emptyList())
     val suggestedDailyPlan: StateFlow<List<com.example.domain.intelligence.DailyPlanSuggestion>> = _suggestedDailyPlan.asStateFlow()
 
+    private val _autoPlanMessage = MutableStateFlow<String?>(null)
+    val autoPlanMessage: StateFlow<String?> = _autoPlanMessage.asStateFlow()
+
+    fun clearAutoPlanMessage() {
+        _autoPlanMessage.value = null
+    }
+
     fun setPlannerTimeRange(range: String) {
         _plannerTimeRange.value = range
         _suggestedDailyPlan.value = emptyList()
+        _autoPlanMessage.value = null
     }
 
     fun generateSuggestedPlan(dateCategory: String = _plannerTimeRange.value) {
+        val currentChapters = chapters.value
+        val currentSubjects = subjects.value
+        val lang = currentLanguage.value
+
+        if (currentChapters.isEmpty() && currentSubjects.isEmpty()) {
+            _autoPlanMessage.value = com.example.util.AppStrings.autoPlanNoChapters(lang)
+            _suggestedDailyPlan.value = emptyList()
+            return
+        }
+
+        val existingForDate = plannerTasks.value.filter { it.dateCategory == dateCategory }
         val suggestions = intelligenceEngine.generateDeterministicDailyPlan(
-            subjects = subjects.value,
-            chapters = chapters.value,
+            subjects = currentSubjects,
+            chapters = currentChapters,
             revisions = revisionItems.value,
             admissions = admissions.value,
-            existingTasks = plannerTasks.value.filter { it.dateCategory == dateCategory },
+            existingTasks = existingForDate,
             mistakes = mistakes.value,
             mockTests = mockTests.value,
             dateCategory = dateCategory,
             dailyAvailableHours = dailyAvailableStudyHours.value,
             preferredStudyPeriod = preferredStudyPeriod.value
         )
+
+        if (suggestions.isEmpty()) {
+            val hasAvailableChapters = currentChapters.any { it.status != "COMPLETED" }
+            val allSlotsUsed = existingForDate.size >= dailyAvailableStudyHours.value
+            _autoPlanMessage.value = when {
+                allSlotsUsed -> com.example.util.AppStrings.autoPlanScheduleFull(lang)
+                !hasAvailableChapters -> com.example.util.AppStrings.autoPlanAllCompleted(lang)
+                else -> com.example.util.AppStrings.autoPlanScheduleFull(lang)
+            }
+        } else {
+            _autoPlanMessage.value = com.example.util.AppStrings.autoPlanGeneratedCount(suggestions.size, lang)
+        }
         _suggestedDailyPlan.value = suggestions
     }
 
     fun clearSuggestedPlan() {
         _suggestedDailyPlan.value = emptyList()
+        _autoPlanMessage.value = null
     }
 
     fun acceptSuggestedPlan(dateCategory: String = _plannerTimeRange.value) {
         val currentSuggestions = _suggestedDailyPlan.value
         if (currentSuggestions.isEmpty()) return
+        val lang = currentLanguage.value
 
         viewModelScope.launch {
             val existingInDate = plannerTasks.value.filter { it.dateCategory == dateCategory }
@@ -475,6 +545,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
 
             _suggestedDailyPlan.value = emptyList()
+            _autoPlanMessage.value = com.example.util.AppStrings.scheduleAppliedSuccess(lang)
         }
     }
 
@@ -677,7 +748,64 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         return mode == AppOpsManager.MODE_ALLOWED
     }
 
-    // Robust Focus Timer with Timestamp-Based Tracking & Recovery
+    // Distraction Control & App Blocker State
+    private val _blockedApps = MutableStateFlow(prefs.blockedApps)
+    val blockedApps: StateFlow<Set<String>> = _blockedApps.asStateFlow()
+
+    private val _isDistractionBlockerEnabled = MutableStateFlow(prefs.isDistractionBlockerEnabled)
+    val isDistractionBlockerEnabled: StateFlow<Boolean> = _isDistractionBlockerEnabled.asStateFlow()
+
+    private val _isAccessibilityServiceActive = MutableStateFlow(false)
+    val isAccessibilityServiceActive: StateFlow<Boolean> = _isAccessibilityServiceActive.asStateFlow()
+
+    private val _hasNotificationPermission = MutableStateFlow(true)
+    val hasNotificationPermission: StateFlow<Boolean> = _hasNotificationPermission.asStateFlow()
+
+    private val _customTimerMinutes = MutableStateFlow(prefs.customTimerMinutes)
+    val customTimerMinutes: StateFlow<Int> = _customTimerMinutes.asStateFlow()
+
+    fun refreshAccessibilityStatus(context: Context) {
+        _isAccessibilityServiceActive.value = StudyHubAccessibilityService.isAccessibilityServiceEnabled(context)
+    }
+
+    fun refreshNotificationPermission(context: Context) {
+        _hasNotificationPermission.value = StudyHubNotificationHelper.hasNotificationPermission(context)
+    }
+
+    fun toggleDistractionBlocker() {
+        val newVal = !_isDistractionBlockerEnabled.value
+        prefs.isDistractionBlockerEnabled = newVal
+        _isDistractionBlockerEnabled.value = newVal
+    }
+
+    fun toggleBlockedApp(packageName: String) {
+        val current = _blockedApps.value.toMutableSet()
+        if (current.contains(packageName)) {
+            current.remove(packageName)
+        } else {
+            current.add(packageName)
+        }
+        prefs.blockedApps = current
+        _blockedApps.value = current
+    }
+
+    fun setBlockedApps(apps: Set<String>) {
+        prefs.blockedApps = apps
+        _blockedApps.value = apps
+    }
+
+    fun setCustomTimerMinutes(minutes: Int) {
+        val clamped = minutes.coerceIn(1, 240)
+        prefs.customTimerMinutes = clamped
+        _customTimerMinutes.value = clamped
+        setTimerDuration(clamped * 60L)
+    }
+
+    fun sendTestSystemNotification(context: Context) {
+        StudyHubNotificationHelper.showTestReminderNotification(context)
+    }
+
+    // Robust Focus Timer with Timestamp-Based Tracking, AlarmManager & Recovery
     private val _timerState = MutableStateFlow(
         TimerState(
             targetSeconds = 45 * 60L,
@@ -769,6 +897,22 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             chapterId = _timerState.value.selectedChapterId
         )
 
+        // Schedule system alarm for session completion
+        val remainingSecs = _timerState.value.currentSeconds
+        val triggerMs = now + (remainingSecs * 1000L)
+        val subjectName = subjects.value.find { it.id == _timerState.value.selectedSubjectId }?.nameEn ?: "General Focus"
+        val chapterName = chapters.value.find { it.id == _timerState.value.selectedChapterId }?.titleEn ?: "Study Session"
+        val durationMins = (_timerState.value.targetSeconds / 60L).toInt()
+
+        val context = getApplication<Application>()
+        StudyHubNotificationHelper.scheduleFocusCompletionAlarm(
+            context = context,
+            triggerEpochMs = triggerMs,
+            subjectName = subjectName,
+            chapterName = chapterName,
+            durationMinutes = durationMins
+        )
+
         launchTimerTicker()
     }
 
@@ -811,6 +955,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             subjectId = _timerState.value.selectedSubjectId,
             chapterId = _timerState.value.selectedChapterId
         )
+
+        // Cancel scheduled alarm while paused
+        val context = getApplication<Application>()
+        StudyHubNotificationHelper.cancelFocusCompletionAlarm(context)
     }
 
     fun resetTimer() {
@@ -818,6 +966,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         prefs.clearTimerState()
         elapsedBeforePauseSeconds = 0L
         timerStartEpochMs = 0L
+
+        // Cancel any pending alarms
+        val context = getApplication<Application>()
+        StudyHubNotificationHelper.cancelFocusCompletionAlarm(context)
 
         _timerState.value = _timerState.value.copy(
             isRunning = false,
@@ -837,16 +989,33 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val durationStudied = (elapsedBeforePauseSeconds + currentRunningElapsed)
             .coerceIn(0L, current.targetSeconds)
 
+        val context = getApplication<Application>()
+        StudyHubNotificationHelper.cancelFocusCompletionAlarm(context)
+
         prefs.clearTimerState()
+        val interruptions = prefs.interruptionCount
+        prefs.resetInterruptionCount()
+
         elapsedBeforePauseSeconds = 0L
         timerStartEpochMs = 0L
 
-        // Record session if > 5 seconds
+        val subjectName = subjects.value.find { it.id == current.selectedSubjectId }?.nameEn ?: "General Focus"
+        val chapterName = chapters.value.find { it.id == current.selectedChapterId }?.titleEn ?: "Study Session"
+        val durationMins = (current.targetSeconds / 60L).toInt()
+
+        // Trigger Android System Notification for completed focus session
+        if (durationStudied >= current.targetSeconds * 0.9) {
+            StudyHubNotificationHelper.showFocusCompletedNotification(
+                context = context,
+                subjectName = subjectName,
+                chapterName = chapterName,
+                durationMinutes = durationMins
+            )
+        }
+
+        // Record session in database if >= 5 seconds
         if (durationStudied >= 5L) {
             viewModelScope.launch {
-                val subjectName = subjects.value.find { it.id == current.selectedSubjectId }?.nameEn ?: "General Focus"
-                val chapterName = chapters.value.find { it.id == current.selectedChapterId }?.titleEn ?: "Study Session"
-
                 repository.logSession(
                     StudySessionEntity(
                         subjectId = current.selectedSubjectId,
@@ -854,7 +1023,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         durationSeconds = durationStudied,
                         timestamp = now - (durationStudied * 1000L),
                         endTime = now,
-                        isCompleted = durationStudied >= current.targetSeconds * 0.9, // completed if 90% done
+                        isCompleted = durationStudied >= current.targetSeconds * 0.9,
+                        interruptionCount = interruptions,
                         sessionType = "POMODORO",
                         notes = "$subjectName: $chapterName"
                     )

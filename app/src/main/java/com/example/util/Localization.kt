@@ -210,8 +210,9 @@ object AppStrings {
     fun markRevised(lang: AppLanguage) = if (lang == AppLanguage.BANGLA) "রিভাইসড মার্ক করুন" else "Mark Revised"
     fun needsRevision(lang: AppLanguage) = if (lang == AppLanguage.BANGLA) "রিভিশন প্রয়োজন" else "Needs Revision"
 
-    // Focus Timer
-    fun timerFocus(lang: AppLanguage) = if (lang == AppLanguage.BANGLA) "ফোকাস টাইমার" else "Study Focus Timer"
+    // Focus Timer & Distraction Blocker 2.0
+    fun timerFocus(lang: AppLanguage) = if (lang == AppLanguage.BANGLA) "ফোকাস সেন্টার" else "Focus & Distraction Control"
+    fun focusSubtitle(lang: AppLanguage) = if (lang == AppLanguage.BANGLA) "গভীর মনোযোগ তৈরি করুন এবং বিভ্রান্তি দূরে রাখুন" else "Build deep concentration and silence distractions"
     fun timerDurationPreset(mins: Int, lang: AppLanguage): String {
         val m = formatNumber(mins, lang)
         return if (lang == AppLanguage.BANGLA) "$m মিনিট" else "${mins}m"
@@ -222,10 +223,70 @@ object AppStrings {
     fun pauseTimer(lang: AppLanguage) = if (lang == AppLanguage.BANGLA) "বিরতি" else "Pause"
     fun resumeTimer(lang: AppLanguage) = if (lang == AppLanguage.BANGLA) "পুনরায় শুরু" else "Resume"
     fun restartTimer(lang: AppLanguage) = if (lang == AppLanguage.BANGLA) "রিস্টার্ট" else "Restart"
-    fun stopTimer(lang: AppLanguage) = if (lang == AppLanguage.BANGLA) "শেষ করুন" else "Finish"
-    fun sessionProgress(lang: AppLanguage) = if (lang == AppLanguage.BANGLA) "সেশনের অগ্রগতি" else "Session Progress"
+    fun stopTimer(lang: AppLanguage) = if (lang == AppLanguage.BANGLA) "শেষ করুন" else "Finish Session"
+    fun sessionProgress(lang: AppLanguage) = if (lang == AppLanguage.BANGLA) "আজকের অগ্রগতি" else "Today's Study Progress"
     fun todayTotalStudy(lang: AppLanguage) = if (lang == AppLanguage.BANGLA) "আজকের মোট অধ্যয়ন" else "Today's Total Study"
     fun sessionSavedBanner(lang: AppLanguage) = if (lang == AppLanguage.BANGLA) "স্টাডি সেশন সফলভাবে সংরক্ষিত হয়েছে!" else "Study session successfully recorded!"
+
+    fun customDuration(lang: AppLanguage) = if (lang == AppLanguage.BANGLA) "কাস্টম" else "Custom"
+    fun customDurationTitle(lang: AppLanguage) = if (lang == AppLanguage.BANGLA) "কাস্টম সময়সীমা নির্ধারণ" else "Set Custom Duration"
+    fun customDurationPrompt(lang: AppLanguage) = if (lang == AppLanguage.BANGLA) "১ থেকে ২৪০ মিনিটের মধ্যে সময় নির্বাচন করুন" else "Select duration between 1 and 240 minutes"
+    fun minutesLabel(lang: AppLanguage) = if (lang == AppLanguage.BANGLA) "মিনিট" else "Minutes"
+    fun applyAction(lang: AppLanguage) = if (lang == AppLanguage.BANGLA) "প্রয়োগ করুন" else "Apply"
+    fun discardConfirmTitle(lang: AppLanguage) = if (lang == AppLanguage.BANGLA) "সেশন রিস্টার্ট নিশ্চিতকরণ" else "Restart Active Session?"
+    fun discardConfirmMessage(lang: AppLanguage) = if (lang == AppLanguage.BANGLA) "আপনার বর্তমান সেশনের সময় শূন্য হয়ে যাবে। আপনি কি নিশ্চিত?" else "Your ongoing focus progress will be reset. Are you sure you want to restart?"
+
+    // Distraction Control & App Blocker
+    fun distractionControlTitle(lang: AppLanguage) = if (lang == AppLanguage.BANGLA) "ডিসট্রাকশন কন্ট্রোল ও অ্যাপ ব্লকার" else "Distraction Control & App Blocker"
+    fun accessibilityServiceTitle(lang: AppLanguage) = if (lang == AppLanguage.BANGLA) "অ্যাক্সেসিবিলিটি সার্ভিস" else "Accessibility Blocker Service"
+    fun accessibilityActive(lang: AppLanguage) = if (lang == AppLanguage.BANGLA) "সক্রিয় ও প্রস্তুত" else "Service Enabled"
+    fun accessibilityInactive(lang: AppLanguage) = if (lang == AppLanguage.BANGLA) "সেটিংসে বন্ধ রয়েছে" else "Service Disabled in Settings"
+    fun accessibilityEnablePrompt(lang: AppLanguage) = if (lang == AppLanguage.BANGLA) "পড়া চলাকালীন অ্যাপ ব্লক করতে অ্যান্ড্রয়েড সেটিংসে StudyHub অ্যাক্সেসিবিলিটি চালু করুন।" else "Enable StudyHub Accessibility Service in Android Settings to block selected apps during sessions."
+    fun openAccessibilitySettings(lang: AppLanguage) = if (lang == AppLanguage.BANGLA) "সেটিংস খুলুন" else "Open Settings"
+    fun blockedAppsCount(count: Int, lang: AppLanguage): String {
+        val num = formatNumber(count, lang)
+        return if (lang == AppLanguage.BANGLA) "$num টি অ্যাপ নির্বাচিত" else "$num apps selected"
+    }
+    fun manageBlockedApps(lang: AppLanguage) = if (lang == AppLanguage.BANGLA) "অ্যাপসমূহ নির্বাচন" else "Manage Blocked Apps"
+    fun blockerStatusActive(lang: AppLanguage) = if (lang == AppLanguage.BANGLA) "ব্লকিং সক্রিয়: সেশন চলাকালীন বিভ্রান্তিকর অ্যাপ বন্ধ থাকবে" else "Blocking Active: Selected apps are restricted"
+    fun blockerStatusPaused(lang: AppLanguage) = if (lang == AppLanguage.BANGLA) "সেশন বিরতিতে: ব্লকিং সাময়িক স্থগিত" else "Session Paused: App restrictions suspended"
+    fun blockerStatusReady(lang: AppLanguage) = if (lang == AppLanguage.BANGLA) "প্রস্তুত: সেশন শুরু হলে স্বয়ংক্রিয়ভাবে ব্লক হবে" else "Ready: Will enforce blocking when timer runs"
+    fun blockerStatusSetupNeeded(lang: AppLanguage) = if (lang == AppLanguage.BANGLA) "সেটআপ প্রয়োজন: সার্ভিস চালু করুন ও অ্যাপ বাছাই করুন" else "Setup Needed: Enable service & select apps"
+    fun selectAppsToBlock(lang: AppLanguage) = if (lang == AppLanguage.BANGLA) "ব্লক করার অ্যাপ নির্বাচন" else "Select Blocked Apps"
+    fun searchApps(lang: AppLanguage) = if (lang == AppLanguage.BANGLA) "অ্যাপ খুঁজুন..." else "Search installed apps..."
+    fun selectAll(lang: AppLanguage) = if (lang == AppLanguage.BANGLA) "সব" else "Select All"
+    fun clearAll(lang: AppLanguage) = if (lang == AppLanguage.BANGLA) "মুছুন" else "Clear All"
+    fun doneAction(lang: AppLanguage) = if (lang == AppLanguage.BANGLA) "সম্পন্ন" else "Done"
+    fun accessibilityExplanation(lang: AppLanguage) = if (lang == AppLanguage.BANGLA)
+        "গোপনীয়তার নিশ্চয়তা: StudyHub কোনো টেক্সট, বার্তা বা পাসওয়ার্ড পড়ে না। শুধুমাত্র নির্বাচিত অ্যাপ চালু হলে আপনাকে স্টাডিহাবে ফিরিয়ে আনে।"
+    else
+        "Privacy Notice: StudyHub never inspects keystrokes, personal messages, or screen text. It solely detects foreground package names of selected apps to keep you in the study zone."
+
+    // Notifications
+    fun notificationPermissionTitle(lang: AppLanguage) = if (lang == AppLanguage.BANGLA) "অ্যান্ড্রয়েড পুশ নোটিফিকেশন" else "Android Push Notifications"
+    fun notificationPermissionGranted(lang: AppLanguage) = if (lang == AppLanguage.BANGLA) "নোটিফিকেশন সক্রিয়: সেশন শেষে অ্যালার্ট পাবেন" else "Notification Permission: Granted"
+    fun notificationPermissionRequired(lang: AppLanguage) = if (lang == AppLanguage.BANGLA) "সেশন সমাপ্তি অ্যালার্টের জন্য নোটিফিকেশন অনুমতি দিন" else "Permission Required for Completion Alerts"
+    fun grantPermission(lang: AppLanguage) = if (lang == AppLanguage.BANGLA) "অনুমতি দিন" else "Grant"
+    fun sendTestNotification(lang: AppLanguage) = if (lang == AppLanguage.BANGLA) "টেস্ট পুশ পাঠান" else "Test Push"
+    fun testNotificationSent(lang: AppLanguage) = if (lang == AppLanguage.BANGLA) "টেস্ট নোটিফিকেশন পাঠানো হয়েছে!" else "Test notification sent to shade!"
+
+    // Unified Calendar Hub & Auto-Plan
+    fun planAndCalendar(lang: AppLanguage) = if (lang == AppLanguage.BANGLA) "প্ল্যান ও ক্যালেন্ডার" else "Plan & Calendar"
+    fun unifiedCalendarSubtitle(lang: AppLanguage) = if (lang == AppLanguage.BANGLA) "দৈনিক স্টাডি শিডিউল এবং ভর্তি পরীক্ষার সময়সূচী" else "Smart study schedule & admission deadlines"
+    fun studyPlannerTab(lang: AppLanguage) = if (lang == AppLanguage.BANGLA) "স্টাডি প্ল্যানার" else "Study Planner"
+    fun admissionCalendarTab(lang: AppLanguage) = if (lang == AppLanguage.BANGLA) "ভর্তি ক্যালেন্ডার" else "Admission Calendar"
+    fun quickActionProgress(lang: AppLanguage) = if (lang == AppLanguage.BANGLA) "অগ্রগতি" else "Progress"
+    fun autoPlanAction(lang: AppLanguage) = if (lang == AppLanguage.BANGLA) "স্মার্ট অটো-প্ল্যান" else "Smart Auto-Plan"
+    fun autoPlanProposalTitle(lang: AppLanguage) = if (lang == AppLanguage.BANGLA) "প্রস্তাবিত স্টাডি শিডিউল প্রিভিউ" else "Suggested Schedule Preview"
+    fun applySchedule(lang: AppLanguage) = if (lang == AppLanguage.BANGLA) "শিডিউল সংরক্ষণ করুন" else "Apply Schedule"
+    fun scheduleAppliedSuccess(lang: AppLanguage) = if (lang == AppLanguage.BANGLA) "স্টাডি শিডিউল সফলভাবে যুক্ত হয়েছে!" else "Study schedule successfully applied!"
+    fun autoPlanNoChapters(lang: AppLanguage) = if (lang == AppLanguage.BANGLA) "সিলেবাসে কোনো অধ্যায় নেই। প্রথমে অধ্যায় যোগ করুন।" else "No chapters found in your syllabus. Please add subjects and chapters first."
+    fun autoPlanAllCompleted(lang: AppLanguage) = if (lang == AppLanguage.BANGLA) "চমৎকার! বর্তমান সব অধ্যায় ইতিমধ্যে সম্পন্ন হয়েছে।" else "Great job! All chapters in your syllabus are already marked completed."
+    fun autoPlanScheduleFull(lang: AppLanguage) = if (lang == AppLanguage.BANGLA) "এই দিনের সকল পড়ার সময় ইতিমধ্যে টাস্কে পূর্ণ আছে।" else "All study time slots for this date are already scheduled."
+    fun autoPlanGeneratedCount(count: Int, lang: AppLanguage): String {
+        val num = formatNumber(count, lang)
+        return if (lang == AppLanguage.BANGLA) "$num টি স্টাডি টাস্ক প্রস্তুত করা হয়েছে" else "$num study tasks scheduled"
+    }
 
     // Admission Calendar
     fun admissionCalendar(lang: AppLanguage) = if (lang == AppLanguage.BANGLA) "ভর্তি ক্যালেন্ডার ও ডেডলাইন" else "Admission Calendar & Deadlines"

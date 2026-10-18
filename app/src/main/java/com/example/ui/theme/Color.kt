@@ -13,6 +13,7 @@ val RoyalBlueTint = Color(0xFFDBEAFE)
 // Text Colors
 val NavyText = Color(0xFF0F1E36)
 val NavySlate = Color(0xFF1E293B)
+val SlateDark = Color(0xFF0F1E36)
 val SlateMuted = Color(0xFF64748B)
 val SlateSubtle = Color(0xFF94A3B8)
 

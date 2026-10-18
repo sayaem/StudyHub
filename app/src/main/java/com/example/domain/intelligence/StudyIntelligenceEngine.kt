@@ -405,7 +405,13 @@ class StudyIntelligenceEngine {
 
         // Limit number of slots according to daily available hours
         val slotCount = (dailyAvailableHours * 60 / 90).coerceIn(1, allSlots.size)
-        val availableSlots = allSlots.take(slotCount)
+
+        // Filter out slots that are already occupied by existing tasks for this date
+        val occupiedSlots = existingTasks.map { it.timeSlot.trim() }.toSet()
+        val existingChapterIds = existingTasks.mapNotNull { it.chapterId }.toSet()
+
+        val freeSlots = allSlots.filter { !occupiedSlots.contains(it) }
+        val availableSlots = if (freeSlots.isNotEmpty()) freeSlots.take(slotCount) else allSlots.take(slotCount)
 
         val suggestions = mutableListOf<DailyPlanSuggestion>()
 
@@ -453,16 +459,29 @@ class StudyIntelligenceEngine {
                 .toSet()
         } else emptySet()
 
-        val candidateChapters = chapters
-            .filter { it.status != "COMPLETED" }
-            .sortedWith(
-                compareByDescending<ChapterEntity> { unresolvedMistakeChapterIds.contains(it.id) }
-                    .thenByDescending { weakSubjectIds.contains(it.subjectId) }
-                    .thenByDescending { it.status == "IN_PROGRESS" }
-                    .thenByDescending { it.priority == "HIGH" }
-                    .thenByDescending { it.isRevisionNeeded }
-                    .thenByDescending { it.priority == "MEDIUM" }
-            )
+        val candidateChapters = if (chapters.any { it.status != "COMPLETED" }) {
+            chapters
+                .filter { it.status != "COMPLETED" && !existingChapterIds.contains(it.id) }
+                .ifEmpty { chapters.filter { it.status != "COMPLETED" } }
+                .sortedWith(
+                    compareByDescending<ChapterEntity> { unresolvedMistakeChapterIds.contains(it.id) }
+                        .thenByDescending { weakSubjectIds.contains(it.subjectId) }
+                        .thenByDescending { it.status == "IN_PROGRESS" }
+                        .thenByDescending { it.priority == "HIGH" }
+                        .thenByDescending { it.isRevisionNeeded }
+                        .thenByDescending { it.priority == "MEDIUM" }
+                )
+        } else {
+            // If all chapters are completed, schedule reinforcement revision on high-yield and mistake-prone chapters
+            chapters
+                .filter { !existingChapterIds.contains(it.id) }
+                .ifEmpty { chapters }
+                .sortedWith(
+                    compareByDescending<ChapterEntity> { unresolvedMistakeChapterIds.contains(it.id) }
+                        .thenByDescending { it.priority == "HIGH" }
+                        .thenByDescending { it.isRevisionNeeded }
+                )
+        }
 
         val usedSubjectIds = mutableSetOf<Long>()
         if (dueRevision?.subjectId != null) {
@@ -489,11 +508,14 @@ class StudyIntelligenceEngine {
 
                 val isWeakSub = weakSubjectIds.contains(chapter.subjectId)
                 val hasUnresolvedMistakes = unresolvedMistakeChapterIds.contains(chapter.id)
+                val isCompletedReinforce = chapter.status == "COMPLETED"
+
                 val reasonEn = when {
                     hasUnresolvedMistakes -> "Weak area: Contains unresolved mistakes from recent tests"
                     isWeakSub -> "Priority practice: Lower scoring subject ($subName) in mock tests"
                     chapter.status == "IN_PROGRESS" -> "Underway topic: finish first to clear chapter backlog"
                     nearestExam != null && chapter.priority == "HIGH" -> "High-yield topic for ${nearestExam.universityName}"
+                    isCompletedReinforce -> "Reinforcement revision: Consolidating key topic before exams"
                     chapter.priority == "HIGH" -> "High priority chapter in core syllabus"
                     else -> "Regular syllabus progression"
                 }
@@ -503,6 +525,7 @@ class StudyIntelligenceEngine {
                     isWeakSub -> "অগ্রাধিকার অনুশীলন: মক টেস্টে ${subNameBn}-এ গড় নম্বর কম"
                     chapter.status == "IN_PROGRESS" -> "চলমান অধ্যায়: অসমাপ্ত কাজ আগে শেষ করে সিলেবাস এগিয়ে রাখুন"
                     nearestExam != null && chapter.priority == "HIGH" -> "${nearestExam.universityName}-এর অতি গুরুত্বপূর্ণ টপিক"
+                    isCompletedReinforce -> "পুনরাবৃত্তি অনুশীলন: পরীক্ষার পূর্বে গুরুত্বপূর্ণ বিষয় দৃঢ়করণ"
                     chapter.priority == "HIGH" -> "সিলেবাসের শীর্ষ অগ্রাধিকারের অধ্যায়"
                     else -> "ধারাবাহিক সিলেবাস অগ্রগতি"
                 }

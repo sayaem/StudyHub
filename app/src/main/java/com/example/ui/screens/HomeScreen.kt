@@ -28,6 +28,7 @@ import androidx.compose.material.icons.filled.NotificationsNone
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Science
 import androidx.compose.material.icons.filled.Timer
+import androidx.compose.material.icons.filled.TrendingUp
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -165,8 +166,20 @@ fun HomeScreen(
                     .fillMaxWidth()
                     .padding(vertical = 4.dp)
             ) {
+                // Background transparent illustration seamlessly blending into the header
+                Image(
+                    painter = painterResource(id = if (isDarkTheme) R.drawable.img_night_transparent else R.drawable.img_morning_transparent),
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .matchParentSize()
+                        .align(Alignment.CenterEnd)
+                )
+
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 4.dp, vertical = 8.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -214,18 +227,7 @@ fun HomeScreen(
                         )
                     }
 
-                    Box(
-                        modifier = Modifier
-                            .size(width = 84.dp, height = 70.dp)
-                            .clip(RoundedCornerShape(16.dp))
-                    ) {
-                        Image(
-                            painter = painterResource(id = if (isDarkTheme) R.drawable.bg_night else R.drawable.bg_morning),
-                            contentDescription = null,
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier.fillMaxSize()
-                        )
-                    }
+                    Spacer(modifier = Modifier.width(100.dp))
                 }
             }
         }
@@ -408,7 +410,7 @@ fun HomeScreen(
                     modifier = Modifier.weight(1f),
                     backgroundColor = cardBg,
                     borderColor = borderCol,
-                    onClick = { onNavigate(ScreenDestination.CALENDAR) }
+                    onClick = { viewModel.openCalendarWithTab(com.example.ui.CalendarHubTab.ADMISSION_CALENDAR) }
                 ) {
                     Column(modifier = Modifier.padding(14.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -623,43 +625,58 @@ fun HomeScreen(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    // 1. Add Subject
-                    QuickActionItem(
-                        icon = Icons.Default.Add,
-                        label = AppStrings.addSubjectAction(lang),
-                        iconBg = if (isDarkTheme) RoyalBlue.copy(alpha = 0.2f) else RoyalBlueLight,
-                        iconTint = RoyalBlue,
-                        textPrimary = textPrimary,
-                        onClick = { showAddSubjectDialog = true }
-                    )
-
-                    // 2. Plan Today
+                    // 1. Plan Today
                     QuickActionItem(
                         icon = Icons.Default.CalendarMonth,
                         label = AppStrings.tabToday(lang),
                         iconBg = if (isDarkTheme) MintGreen.copy(alpha = 0.2f) else MintGreenLight,
                         iconTint = MintGreen,
                         textPrimary = textPrimary,
-                        onClick = { onNavigate(ScreenDestination.SMART_PLANNER) }
+                        testTag = "quick_action_today",
+                        onClick = { viewModel.openCalendarWithTab(com.example.ui.CalendarHubTab.STUDY_PLANNER, "TODAY") }
                     )
 
-                    // 3. Start Timer
+                    // 2. Study Progress / Analytics
+                    QuickActionItem(
+                        icon = Icons.Default.TrendingUp,
+                        label = AppStrings.quickActionProgress(lang),
+                        iconBg = if (isDarkTheme) Color(0xFF8B5CF6).copy(alpha = 0.2f) else Color(0xFFEDE9FE),
+                        iconTint = Color(0xFF8B5CF6),
+                        textPrimary = textPrimary,
+                        testTag = "quick_action_progress",
+                        onClick = { onNavigate(ScreenDestination.PROGRESS_ANALYTICS) }
+                    )
+
+                    // 3. Start Focus
                     QuickActionItem(
                         icon = Icons.Default.Timer,
                         label = AppStrings.startFocus(lang),
                         iconBg = if (isDarkTheme) RoyalBlue.copy(alpha = 0.2f) else RoyalBlueLight,
                         iconTint = RoyalBlue,
                         textPrimary = textPrimary,
+                        testTag = "quick_action_focus",
                         onClick = { onNavigate(ScreenDestination.FOCUS) }
                     )
 
-                    // 4. Add Exam
+                    // 4. Add Subject
+                    QuickActionItem(
+                        icon = Icons.Default.Add,
+                        label = AppStrings.addSubjectAction(lang),
+                        iconBg = if (isDarkTheme) Color(0xFF3B82F6).copy(alpha = 0.2f) else Color(0xFFEFF6FF),
+                        iconTint = Color(0xFF3B82F6),
+                        textPrimary = textPrimary,
+                        testTag = "quick_action_add_subject",
+                        onClick = { showAddSubjectDialog = true }
+                    )
+
+                    // 5. Add Exam
                     QuickActionItem(
                         icon = Icons.Default.CalendarToday,
                         label = AppStrings.addExam(lang),
-                        iconBg = if (isDarkTheme) RoyalBlue.copy(alpha = 0.2f) else RoyalBlueLight,
-                        iconTint = RoyalBlue,
+                        iconBg = if (isDarkTheme) Color(0xFFF59E0B).copy(alpha = 0.2f) else Color(0xFFFEF3C7),
+                        iconTint = Color(0xFFD97706),
                         textPrimary = textPrimary,
+                        testTag = "quick_action_add_exam",
                         onClick = { showAddExamDialog = true }
                     )
                 }
@@ -700,6 +717,7 @@ fun QuickActionItem(
     iconBg: Color,
     iconTint: Color,
     textPrimary: Color,
+    testTag: String = "",
     onClick: () -> Unit
 ) {
     Column(
@@ -707,27 +725,29 @@ fun QuickActionItem(
         modifier = Modifier
             .clip(RoundedCornerShape(12.dp))
             .clickable(onClick = onClick)
-            .padding(vertical = 4.dp, horizontal = 2.dp)
+            .padding(vertical = 4.dp, horizontal = 1.dp)
+            .testTag(testTag)
     ) {
         Box(
             modifier = Modifier
-                .size(54.dp)
-                .background(iconBg, RoundedCornerShape(16.dp)),
+                .size(50.dp)
+                .background(iconBg, RoundedCornerShape(14.dp)),
             contentAlignment = Alignment.Center
         ) {
             Icon(
                 imageVector = icon,
                 contentDescription = label,
                 tint = iconTint,
-                modifier = Modifier.size(24.dp)
+                modifier = Modifier.size(22.dp)
             )
         }
-        Spacer(modifier = Modifier.height(6.dp))
+        Spacer(modifier = Modifier.height(5.dp))
         Text(
             text = label,
-            fontSize = 11.sp,
+            fontSize = 10.5.sp,
             fontWeight = FontWeight.Medium,
-            color = textPrimary
+            color = textPrimary,
+            maxLines = 1
         )
     }
 }
