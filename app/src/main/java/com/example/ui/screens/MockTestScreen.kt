@@ -78,15 +78,7 @@ fun MockTestScreen(
 
     val subjectsMap = remember(subjects) { subjects.associateBy { it.id } }
     val distinctProviders = remember(mockTests) {
-        mockTests.map { it.examProvider.trim().lowercase(java.util.Locale.US) }
-            .distinct()
-            .filter { it.isNotBlank() }
-            .map { provider ->
-                when(provider) {
-                    "udvash" -> "Udvash"
-                    else -> provider.replaceFirstChar { if (it.isLowerCase()) it.titlecase(java.util.Locale.US) else it.toString() }
-                }
-            }
+        mockTests.map { it.examProvider.trim() }.filter { it.isNotBlank() }.distinct()
     }
 
     val now = System.currentTimeMillis()

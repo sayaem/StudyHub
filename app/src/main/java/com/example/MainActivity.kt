@@ -9,7 +9,17 @@ import androidx.activity.viewModels
 import androidx.compose.animation.Crossfade
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CalendarMonth
@@ -27,7 +37,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.runtime.*
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -38,16 +49,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import kotlinx.coroutines.delay
-
 import com.example.ui.BottomTab
 import com.example.ui.MainViewModel
 import com.example.ui.ScreenDestination
 import com.example.ui.screens.AboutScreen
 import com.example.ui.screens.DataManagementScreen
-import com.example.ui.screens.CalendarHubScreen
-import com.example.ui.screens.PrivacyPolicyScreen
-import com.example.ui.screens.TermsScreen
 import com.example.ui.screens.CalendarScreen
 import com.example.ui.screens.FocusTimerScreen
 import com.example.ui.screens.HomeScreen
@@ -79,23 +85,14 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        com.example.util.NotificationHelper.createNotificationChannel(this)
         enableEdgeToEdge()
         setContent {
             val isDarkTheme by viewModel.isDarkTheme.collectAsStateWithLifecycle()
             val isOnboardingCompleted by viewModel.isOnboardingCompleted.collectAsStateWithLifecycle()
-            var isSplashVisible by remember { mutableStateOf(true) }
-
-            LaunchedEffect(Unit) {
-                delay(1400)
-                isSplashVisible = false
-            }
 
             MyApplicationTheme(darkTheme = isDarkTheme) {
-                if (isSplashVisible) {
-                    com.example.ui.screens.SplashScreen(isDarkTheme = isDarkTheme, lang = viewModel.currentLanguage.collectAsStateWithLifecycle().value)
-                } else if (!isOnboardingCompleted) {
-                    com.example.ui.screens.OnboardingFlowScreen(
+                if (!isOnboardingCompleted) {
+                    com.example.ui.screens.SplashAndOnboardingScreen(
                         viewModel = viewModel,
                         isDarkTheme = isDarkTheme,
                         onComplete = { goal, focus, breakMins ->
@@ -193,8 +190,9 @@ fun StudyHubApp(viewModel: MainViewModel, isDarkTheme: Boolean) {
                     lang = lang,
                     onBack = { viewModel.navigateTo(ScreenDestination.SYLLABUS) }
                 )
-                ScreenDestination.CALENDAR -> CalendarHubScreen(
+                ScreenDestination.CALENDAR -> CalendarScreen(
                     viewModel = viewModel,
+                    admissions = admissions,
                     isDarkTheme = isDarkTheme,
                     lang = lang
                 )
@@ -233,8 +231,7 @@ fun StudyHubApp(viewModel: MainViewModel, isDarkTheme: Boolean) {
                     viewModel = viewModel,
                     isDarkTheme = isDarkTheme,
                     lang = lang,
-                    onBack = { viewModel.navigateTo(ScreenDestination.PROFILE) },
-                    onNavigate = { viewModel.navigateTo(it) }
+                    onBack = { viewModel.navigateTo(ScreenDestination.PROFILE) }
                 )
                 ScreenDestination.DATA_MANAGEMENT -> DataManagementScreen(
                     viewModel = viewModel,
@@ -242,16 +239,8 @@ fun StudyHubApp(viewModel: MainViewModel, isDarkTheme: Boolean) {
                     lang = lang,
                     onBack = { viewModel.navigateTo(ScreenDestination.PROFILE) }
                 )
-                ScreenDestination.PRIVACY -> PrivacyPolicyScreen(
-                    isDarkTheme = isDarkTheme,
-                    lang = lang,
-                    onBack = { viewModel.navigateTo(ScreenDestination.ABOUT) }
-                )
-                ScreenDestination.TERMS -> TermsScreen(
-                    isDarkTheme = isDarkTheme,
-                    lang = lang,
-                    onBack = { viewModel.navigateTo(ScreenDestination.ABOUT) }
-                )
+                ScreenDestination.PRIVACY -> {} // Placeholder
+                ScreenDestination.TERMS -> {} // Placeholder
             }
         }
     }

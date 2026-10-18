@@ -751,13 +751,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         )
     }
 
-    fun setCustomTimerDuration(hours: Int, minutes: Int) {
-        val seconds = (hours * 3600L) + (minutes * 60L)
-        if (seconds > 0) {
-            setTimerDuration(seconds)
-        }
-    }
-
     fun startTimer() {
         if (_timerState.value.isRunning && !_timerState.value.isPaused) return
 

@@ -23,12 +23,10 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Brightness4
 import androidx.compose.material.icons.filled.DeleteOutline
-import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.HelpOutline
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Language
-import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.NotificationsNone
 import androidx.compose.material.icons.filled.WbSunny
 import androidx.compose.material3.AlertDialog
@@ -250,41 +248,7 @@ fun ProfileScreen(
                         isDarkTheme = isDarkTheme,
                         textPrimary = textPrimary,
                         textSecondary = textSecondary,
-                        onClick = { onNavigate(ScreenDestination.ABOUT) }
-                    )
-
-                    HorizontalDivider(
-                        color = if (isDarkTheme) DarkBorder else SlateBorder,
-                        thickness = 0.8.dp,
-                        modifier = Modifier.padding(horizontal = 16.dp)
-                    )
-
-                    // Privacy Policy
-                    ProfileSettingRow(
-                        icon = Icons.Default.Lock,
-                        title = AppStrings.privacyPolicy(lang),
-                        value = null,
-                        isDarkTheme = isDarkTheme,
-                        textPrimary = textPrimary,
-                        textSecondary = textSecondary,
-                        onClick = { onNavigate(ScreenDestination.PRIVACY) }
-                    )
-
-                    HorizontalDivider(
-                        color = if (isDarkTheme) DarkBorder else SlateBorder,
-                        thickness = 0.8.dp,
-                        modifier = Modifier.padding(horizontal = 16.dp)
-                    )
-
-                    // Terms & Conditions
-                    ProfileSettingRow(
-                        icon = Icons.Default.Description,
-                        title = AppStrings.termsConditions(lang),
-                        value = null,
-                        isDarkTheme = isDarkTheme,
-                        textPrimary = textPrimary,
-                        textSecondary = textSecondary,
-                        onClick = { onNavigate(ScreenDestination.TERMS) }
+                        onClick = { showAboutDialog = true }
                     )
 
                     HorizontalDivider(

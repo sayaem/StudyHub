@@ -64,10 +64,10 @@ fun FocusTimerScreen(
 
     val hasUsagePermission = remember { viewModel.hasUsageAccessPermission() }
 
-    val bg = MaterialTheme.colorScheme.background
-    val cardBg = MaterialTheme.colorScheme.surface
-    val textPrimary = MaterialTheme.colorScheme.onSurface
-    val textSecondary = MaterialTheme.colorScheme.onSurfaceVariant
+    val bg = DarkMidnightBg
+    val cardBg = DarkMidnightSurface
+    val textPrimary = DarkTextWhite
+    val textSecondary = DarkTextMuted
 
     val selectedSubject = subjects.find { it.id == timerState.selectedSubjectId } ?: subjects.firstOrNull()
     val relevantChapters = chapters.filter { it.subjectId == (selectedSubject?.id ?: 0L) }
@@ -82,8 +82,6 @@ fun FocusTimerScreen(
         selectedChapter.titleBn
     else
         selectedChapter?.titleEn ?: (if (lang == AppLanguage.BANGLA) "স্টাডি সেশন" else "Study Session")
-
-    var showMenu by remember { mutableStateOf(false) }
 
     LazyColumn(
         modifier = modifier
@@ -122,31 +120,12 @@ fun FocusTimerScreen(
                     color = textPrimary
                 )
 
-                Box {
-                    IconButton(onClick = { showMenu = true }, modifier = Modifier.size(36.dp)) {
-                        Icon(
-                            imageVector = Icons.Default.Menu,
-                            contentDescription = "Menu",
-                            tint = textPrimary
-                        )
-                    }
-                    DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
-                        DropdownMenuItem(
-                            text = { Text("History") },
-                            onClick = { /* Navigate to History */ showMenu = false }
-                        )
-                        DropdownMenuItem(
-                            text = { Text("Settings") },
-                            onClick = { /* Navigate to Settings */ showMenu = false }
-                        )
-                        DropdownMenuItem(
-                            text = { Text("Custom Duration") },
-                            onClick = { 
-                                showMenu = false
-                                // Logic to show custom duration dialog
-                            }
-                        )
-                    }
+                IconButton(onClick = { /* Menu */ }, modifier = Modifier.size(36.dp)) {
+                    Icon(
+                        imageVector = Icons.Default.Menu,
+                        contentDescription = "Menu",
+                        tint = textPrimary
+                    )
                 }
             }
         }

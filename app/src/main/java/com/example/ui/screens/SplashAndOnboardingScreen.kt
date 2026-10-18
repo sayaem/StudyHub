@@ -74,18 +74,47 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 @Composable
-fun OnboardingFlowScreen(
+fun SplashAndOnboardingScreen(
     viewModel: MainViewModel,
     isDarkTheme: Boolean,
     onComplete: (Int, Int, Int) -> Unit
 ) {
+    var showSplash by remember { mutableStateOf(true) }
     val lang by viewModel.currentLanguage.collectAsStateWithLifecycle()
-    OnboardingFlow(
-        viewModel = viewModel,
-        isDarkTheme = isDarkTheme,
-        lang = lang,
-        onComplete = onComplete
-    )
+    val userName by viewModel.userName.collectAsStateWithLifecycle()
+
+    // Splash timer
+    LaunchedEffect(Unit) {
+        delay(1400)
+        showSplash = false
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(if (isDarkTheme) DarkMidnightBg else MaterialTheme.colorScheme.background)
+    ) {
+        androidx.compose.animation.AnimatedVisibility(
+            visible = showSplash,
+            enter = fadeIn(animationSpec = tween(400)),
+            exit = fadeOut(animationSpec = tween(400))
+        ) {
+            SplashScreen(isDarkTheme = isDarkTheme, lang = lang)
+        }
+
+        androidx.compose.animation.AnimatedVisibility(
+            visible = !showSplash,
+            enter = fadeIn(animationSpec = tween(500)),
+            exit = fadeOut()
+        ) {
+            OnboardingFlow(
+                viewModel = viewModel,
+                isDarkTheme = isDarkTheme,
+                lang = lang,
+                onComplete = onComplete
+            )
+        }
+    }
 }
 
 @Composable
