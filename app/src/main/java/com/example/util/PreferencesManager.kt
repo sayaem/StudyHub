@@ -115,6 +115,28 @@ class PreferencesManager(context: Context) {
         return now < until
     }
 
+    var hasAskedNotificationPermission: Boolean
+        get() = prefs.getBoolean("key_has_asked_notif_perm", false)
+        set(value) = prefs.edit().putBoolean("key_has_asked_notif_perm", value).apply()
+
+    fun recordNotificationDelivered(id: String, timestamp: Long = System.currentTimeMillis()) {
+        prefs.edit().putLong("delivered_$id", timestamp).apply()
+    }
+
+    fun getLastDeliveredEpoch(id: String): Long {
+        return prefs.getLong("delivered_$id", 0L)
+    }
+
+    fun isNotificationDeliveredRecently(id: String, cooldownMs: Long = 12 * 60 * 60 * 1000L): Boolean {
+        val last = getLastDeliveredEpoch(id)
+        if (last == 0L) return false
+        return (System.currentTimeMillis() - last) < cooldownMs
+    }
+
+    var lastEngineEvaluationTimestamp: Long
+        get() = prefs.getLong("key_last_engine_eval_time", 0L)
+        set(value) = prefs.edit().putLong("key_last_engine_eval_time", value).apply()
+
     // Study Planning and Goals
     var dailyAvailableStudyHours: Int
         get() = prefs.getInt("key_daily_available_hours", 4)
