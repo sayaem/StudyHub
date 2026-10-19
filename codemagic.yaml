@@ -1,9 +1,9 @@
-# Codemagic CI/CD configuration for Z Android App
+# Codemagic CI/CD configuration for StudyHub Android App
 # For detailed configuration options, see: https://docs.codemagic.io/yaml-basic/yamls/
 
 workflows:
   android-debug:
-    name: Z Android Debug Build
+    name: StudyHub Android Debug Build
     max_build_duration: 60
     
     # Use mac_mini_m2.
@@ -13,7 +13,7 @@ workflows:
     environment:
       vars:
         # General non-sensitive variables
-        APP_NAME: "Z"
+        APP_NAME: "StudyHub"
       java: 17
 
     triggering:
