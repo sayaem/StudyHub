@@ -1,6 +1,6 @@
 {
   "name": "StudyHub",
-  "description": "Premium productivity and admission prep assistant for university candidates with bilingual syllabus tracking, Pomodoro focus timer, smart study planner, and admission countdowns.",
+  "description": "Smart study planner, admission calendar, and focus tracker for students",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

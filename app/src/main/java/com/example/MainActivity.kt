@@ -4,80 +4,19 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
-import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.compose.animation.Crossfade
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CalendarMonth
-import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.MenuBook
-import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.filled.Timer
-import androidx.compose.material.icons.outlined.CalendarMonth
-import androidx.compose.material.icons.outlined.Home
-import androidx.compose.material.icons.outlined.MenuBook
-import androidx.compose.material.icons.outlined.Person
-import androidx.compose.material.icons.outlined.Timer
-import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.ui.Alignment
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.example.ui.BottomTab
-import com.example.ui.MainViewModel
-import com.example.ui.ScreenDestination
-import com.example.ui.screens.AboutScreen
-import com.example.ui.screens.DataManagementScreen
-import com.example.ui.screens.CalendarScreen
-import com.example.ui.screens.FocusTimerScreen
-import com.example.ui.screens.HomeScreen
-import com.example.ui.screens.ProfileScreen
-import com.example.ui.screens.ProgressAnalyticsScreen
-import com.example.ui.screens.RevisionTrackerScreen
-import com.example.ui.screens.SmartPlannerScreen
-import com.example.ui.screens.SubjectDetailsScreen
-import com.example.ui.screens.SyllabusScreen
-import com.example.ui.screens.NotificationsScreen
-import com.example.ui.screens.MockTestScreen
-import com.example.ui.screens.MistakeBookScreen
-import com.example.ui.theme.DarkBorder
-import com.example.ui.theme.DarkMidnightBg
-import com.example.ui.theme.DarkMidnightSurface
-import com.example.ui.theme.DarkTextMuted
-import com.example.ui.theme.DarkTextWhite
+import com.example.notification.StudyHubNotificationHelper
+import com.example.ui.*
+import com.example.ui.screens.*
 import com.example.ui.theme.MyApplicationTheme
-import com.example.ui.theme.RoyalBlue
-import com.example.ui.theme.RoyalBlueLight
-import com.example.ui.theme.SlateBorder
-import com.example.ui.theme.SlateMuted
-import com.example.util.AppLanguage
-import com.example.util.AppStrings
 
 class MainActivity : ComponentActivity() {
 
@@ -85,42 +24,34 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
-
-        // Initialize Android notification channels
-        com.example.notification.StudyHubNotificationHelper.initNotificationChannels(applicationContext)
-
-        handleNavigationIntent(intent)
+        StudyHubNotificationHelper.initNotificationChannels(applicationContext)
 
         setContent {
             val isDarkTheme by viewModel.isDarkTheme.collectAsStateWithLifecycle()
             val isOnboardingCompleted by viewModel.isOnboardingCompleted.collectAsStateWithLifecycle()
+            val showSplash by viewModel.showSplash.collectAsStateWithLifecycle()
 
             MyApplicationTheme(darkTheme = isDarkTheme) {
-                if (!isOnboardingCompleted) {
-                    com.example.ui.screens.OnboardingFlowScreen(
-                        viewModel = viewModel,
-                        isDarkTheme = isDarkTheme,
-                        onComplete = { goal, focus, breakMins ->
-                            viewModel.completeOnboarding(goal, focus, breakMins)
+                when {
+                    showSplash -> {
+                        SplashScreen(isDarkTheme = isDarkTheme) {
+                            viewModel.dismissSplash()
                         }
-                    )
-                } else {
-                    StudyHubApp(viewModel = viewModel, isDarkTheme = isDarkTheme)
+                    }
+                    !isOnboardingCompleted -> {
+                        OnboardingFlowScreen(
+                            viewModel = viewModel,
+                            isDarkTheme = isDarkTheme,
+                            onComplete = { goal, focus, breakMins ->
+                                viewModel.completeOnboarding(goal, focus, breakMins)
+                            }
+                        )
+                    }
+                    else -> {
+                        StudyHubApp(viewModel = viewModel, isDarkTheme = isDarkTheme)
+                    }
                 }
             }
-        }
-    }
-
-    override fun onNewIntent(intent: android.content.Intent) {
-        super.onNewIntent(intent)
-        setIntent(intent)
-        handleNavigationIntent(intent)
-    }
-
-    private fun handleNavigationIntent(intent: android.content.Intent?) {
-        if (intent?.getStringExtra("navigate_to") == "FOCUS") {
-            viewModel.navigateTo(ScreenDestination.FOCUS)
         }
     }
 }
@@ -134,11 +65,8 @@ fun StudyHubApp(viewModel: MainViewModel, isDarkTheme: Boolean) {
     val subjects by viewModel.subjects.collectAsStateWithLifecycle()
     val chapters by viewModel.chapters.collectAsStateWithLifecycle()
     val admissions by viewModel.admissions.collectAsStateWithLifecycle()
-    val timerState by viewModel.timerState.collectAsStateWithLifecycle()
     val selectedSubjectId by viewModel.selectedSubjectId.collectAsStateWithLifecycle()
 
-    // Handle back button on sub-screens to return to their parent
-    // Handle back button on sub-screens to return to their parent
     BackHandler(enabled = currentScreen != ScreenDestination.HOME) {
         when (currentScreen) {
             ScreenDestination.SUBJECT_DETAILS -> viewModel.navigateTo(ScreenDestination.SYLLABUS)
@@ -146,6 +74,7 @@ fun StudyHubApp(viewModel: MainViewModel, isDarkTheme: Boolean) {
             ScreenDestination.REVISION_TRACKER -> viewModel.navigateTo(ScreenDestination.SYLLABUS)
             ScreenDestination.PROGRESS_ANALYTICS -> viewModel.navigateBack()
             ScreenDestination.NOTIFICATIONS -> viewModel.navigateTo(ScreenDestination.HOME)
+            ScreenDestination.PRIVACY, ScreenDestination.TERMS, ScreenDestination.ABOUT -> viewModel.navigateTo(ScreenDestination.PROFILE)
             else -> viewModel.navigateTo(ScreenDestination.HOME)
         }
     }
@@ -193,7 +122,7 @@ fun StudyHubApp(viewModel: MainViewModel, isDarkTheme: Boolean) {
                 )
                 ScreenDestination.FOCUS -> FocusTimerScreen(
                     viewModel = viewModel,
-                    timerState = timerState,
+                    timerState = null,
                     subjects = subjects,
                     chapters = chapters,
                     isDarkTheme = isDarkTheme,
@@ -255,8 +184,18 @@ fun StudyHubApp(viewModel: MainViewModel, isDarkTheme: Boolean) {
                     lang = lang,
                     onBack = { viewModel.navigateTo(ScreenDestination.PROFILE) }
                 )
-                ScreenDestination.PRIVACY -> {} // Placeholder
-                ScreenDestination.TERMS -> {} // Placeholder
+                ScreenDestination.PRIVACY -> PrivacyPolicyScreen(
+                    viewModel = viewModel,
+                    isDarkTheme = isDarkTheme,
+                    lang = lang,
+                    onBack = { viewModel.navigateTo(ScreenDestination.PROFILE) }
+                )
+                ScreenDestination.TERMS -> TermsScreen(
+                    viewModel = viewModel,
+                    isDarkTheme = isDarkTheme,
+                    lang = lang,
+                    onBack = { viewModel.navigateTo(ScreenDestination.PROFILE) }
+                )
             }
         }
     }
@@ -264,116 +203,43 @@ fun StudyHubApp(viewModel: MainViewModel, isDarkTheme: Boolean) {
 
 @Composable
 fun StudyHubBottomNavBar(
-    currentTab: BottomTab,
+    currentTab: BottomNavTab,
     isDarkTheme: Boolean,
-    onTabSelected: (BottomTab) -> Unit,
-    lang: AppLanguage
+    onTabSelected: (BottomNavTab) -> Unit,
+    lang: com.example.util.AppLanguage
 ) {
-    val navBg = if (isDarkTheme) DarkMidnightSurface else Color.White
-    val navBorder = if (isDarkTheme) DarkBorder else SlateBorder
-
-    Surface(
-        modifier = Modifier
-            .fillMaxWidth()
-            .navigationBarsPadding(),
-        color = navBg,
-        border = androidx.compose.foundation.BorderStroke(1.dp, navBorder)
+    NavigationBar(
+        containerColor = MaterialTheme.colorScheme.surface
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 8.dp, vertical = 6.dp),
-            horizontalArrangement = Arrangement.SpaceAround,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            NavBarItem(
-                label = AppStrings.navHome(lang),
-                selectedIcon = Icons.Filled.Home,
-                unselectedIcon = Icons.Outlined.Home,
-                isSelected = currentTab == BottomTab.HOME,
-                isDarkTheme = isDarkTheme,
-                testTag = "nav_home",
-                onClick = { onTabSelected(BottomTab.HOME) }
-            )
-
-            NavBarItem(
-                label = AppStrings.navSyllabus(lang),
-                selectedIcon = Icons.Filled.MenuBook,
-                unselectedIcon = Icons.Outlined.MenuBook,
-                isSelected = currentTab == BottomTab.SYLLABUS,
-                isDarkTheme = isDarkTheme,
-                testTag = "nav_syllabus",
-                onClick = { onTabSelected(BottomTab.SYLLABUS) }
-            )
-
-            NavBarItem(
-                label = AppStrings.navFocus(lang),
-                selectedIcon = Icons.Filled.Timer,
-                unselectedIcon = Icons.Outlined.Timer,
-                isSelected = currentTab == BottomTab.FOCUS,
-                isDarkTheme = isDarkTheme,
-                testTag = "nav_focus",
-                onClick = { onTabSelected(BottomTab.FOCUS) }
-            )
-
-            NavBarItem(
-                label = AppStrings.navCalendar(lang),
-                selectedIcon = Icons.Filled.CalendarMonth,
-                unselectedIcon = Icons.Outlined.CalendarMonth,
-                isSelected = currentTab == BottomTab.CALENDAR,
-                isDarkTheme = isDarkTheme,
-                testTag = "nav_calendar",
-                onClick = { onTabSelected(BottomTab.CALENDAR) }
-            )
-
-            NavBarItem(
-                label = AppStrings.navProfile(lang),
-                selectedIcon = Icons.Filled.Person,
-                unselectedIcon = Icons.Outlined.Person,
-                isSelected = currentTab == BottomTab.PROFILE,
-                isDarkTheme = isDarkTheme,
-                testTag = "nav_profile",
-                onClick = { onTabSelected(BottomTab.PROFILE) }
-            )
-        }
-    }
-}
-
-@Composable
-fun NavBarItem(
-    label: String,
-    selectedIcon: ImageVector,
-    unselectedIcon: ImageVector,
-    isSelected: Boolean,
-    isDarkTheme: Boolean,
-    testTag: String,
-    onClick: () -> Unit
-) {
-    val activeColor = RoyalBlue
-    val inactiveColor = if (isDarkTheme) DarkTextMuted else SlateMuted
-
-    Column(
-        modifier = Modifier
-            .clip(RoundedCornerShape(12.dp))
-            .clickable(onClick = onClick)
-            .padding(horizontal = 10.dp, vertical = 6.dp)
-            .testTag(testTag),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Icon(
-            imageVector = if (isSelected) selectedIcon else unselectedIcon,
-            contentDescription = label,
-            tint = if (isSelected) activeColor else inactiveColor,
-            modifier = Modifier.size(22.dp)
+        NavigationBarItem(
+            icon = { Icon(imageVector = Icons.Default.Home, contentDescription = "Home") },
+            label = { Text(if (lang == com.example.util.AppLanguage.BANGLA) "হোম" else "Home") },
+            selected = currentTab == BottomNavTab.HOME,
+            onClick = { onTabSelected(BottomNavTab.HOME) }
         )
-
-        Spacer(modifier = Modifier.height(3.dp))
-
-        Text(
-            text = label,
-            fontSize = 11.sp,
-            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-            color = if (isSelected) activeColor else inactiveColor
+        NavigationBarItem(
+            icon = { Icon(imageVector = Icons.Default.MenuBook, contentDescription = "Syllabus") },
+            label = { Text(if (lang == com.example.util.AppLanguage.BANGLA) "সিলেবাস" else "Syllabus") },
+            selected = currentTab == BottomNavTab.SYLLABUS,
+            onClick = { onTabSelected(BottomNavTab.SYLLABUS) }
+        )
+        NavigationBarItem(
+            icon = { Icon(imageVector = Icons.Default.Timer, contentDescription = "Focus") },
+            label = { Text(if (lang == com.example.util.AppLanguage.BANGLA) "ফোকাস" else "Focus") },
+            selected = currentTab == BottomNavTab.FOCUS,
+            onClick = { onTabSelected(BottomNavTab.FOCUS) }
+        )
+        NavigationBarItem(
+            icon = { Icon(imageVector = Icons.Default.CalendarMonth, contentDescription = "Calendar") },
+            label = { Text(if (lang == com.example.util.AppLanguage.BANGLA) "ক্যালেন্ডার" else "Calendar") },
+            selected = currentTab == BottomNavTab.CALENDAR,
+            onClick = { onTabSelected(BottomNavTab.CALENDAR) }
+        )
+        NavigationBarItem(
+            icon = { Icon(imageVector = Icons.Default.Person, contentDescription = "Profile") },
+            label = { Text(if (lang == com.example.util.AppLanguage.BANGLA) "প্রোফাইল" else "Profile") },
+            selected = currentTab == BottomNavTab.PROFILE,
+            onClick = { onTabSelected(BottomNavTab.PROFILE) }
         )
     }
 }
