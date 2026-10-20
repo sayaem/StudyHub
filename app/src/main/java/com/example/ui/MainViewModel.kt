@@ -127,6 +127,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _isDarkTheme.value = newVal
     }
 
+    fun setDarkTheme(enabled: Boolean) {
+        prefs.isDarkTheme = enabled
+        _isDarkTheme.value = enabled
+    }
+
     // Persistent Language
     private val _currentLanguage = MutableStateFlow(
         if (prefs.language == "bn") AppLanguage.BANGLA else AppLanguage.ENGLISH

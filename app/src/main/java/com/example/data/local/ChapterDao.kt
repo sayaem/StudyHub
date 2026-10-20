@@ -33,11 +33,11 @@ interface ChapterDao {
     suspend fun deleteChapter(chapter: ChapterEntity)
 
     @Query("DELETE FROM chapters WHERE id = :id")
-    suspend fun deleteChapterById(id: Long)
+    suspend fun deleteChapterById(id: Long): Int
 
     @Query("UPDATE chapters SET status = :status WHERE id = :id")
-    suspend fun updateStatus(id: Long, status: String)
+    suspend fun updateStatus(id: Long, status: String): Int
 
     @Query("UPDATE chapters SET isRevisionNeeded = :needed, revisionCount = revisionCount + :incrementRevision, lastRevisedAt = :lastRevised WHERE id = :id")
-    suspend fun updateRevision(id: Long, needed: Boolean, incrementRevision: Int, lastRevised: Long?)
+    suspend fun updateRevision(id: Long, needed: Boolean, incrementRevision: Int, lastRevised: Long?): Int
 }

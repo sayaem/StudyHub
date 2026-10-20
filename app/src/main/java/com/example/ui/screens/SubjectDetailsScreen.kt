@@ -5,15 +5,16 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.example.ui.ChapterItem
+import com.example.data.model.ChapterEntity
+import com.example.data.model.SubjectEntity
 import com.example.ui.MainViewModel
-import com.example.ui.SubjectItem
 import com.example.util.AppLanguage
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -21,22 +22,25 @@ import com.example.util.AppLanguage
 fun SubjectDetailsScreen(
     viewModel: MainViewModel,
     subjectId: Long,
-    subjects: List<SubjectItem>,
-    chapters: List<ChapterItem>,
+    subjects: List<SubjectEntity>,
+    chapters: List<ChapterEntity>,
     isDarkTheme: Boolean,
     lang: AppLanguage,
     onBack: () -> Unit
 ) {
-    val subject = subjects.find { it.id == subjectId } ?: subjects.first()
-    val subChapters = chapters.filter { it.subjectId == subject.id }
+    val subject = subjects.find { it.id == subjectId } ?: subjects.firstOrNull()
+    val subChapters = if (subject != null) chapters.filter { it.subjectId == subject.id } else emptyList()
+    val title = if (subject != null) {
+        if (lang == AppLanguage.BANGLA) subject.nameBn else subject.nameEn
+    } else "Subject"
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(subject.name) },
+                title = { Text(title, fontWeight = FontWeight.SemiBold) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(imageVector = Icons.Default.ArrowBack, contentDescription = "Back")
+                        Icon(imageVector = Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface)
@@ -51,7 +55,10 @@ fun SubjectDetailsScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            items(subChapters) { ch ->
+            items(subChapters, key = { it.id }) { ch ->
+                val chTitle = if (lang == AppLanguage.BANGLA) ch.titleBn else ch.titleEn
+                val isCompleted = ch.status == "COMPLETED"
+
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
@@ -60,10 +67,20 @@ fun SubjectDetailsScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(16.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(text = ch.title, style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium))
-                        Checkbox(checked = ch.isCompleted, onCheckedChange = {})
+                        Text(
+                            text = chTitle,
+                            style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium),
+                            modifier = Modifier.weight(1f)
+                        )
+                        Checkbox(
+                            checked = isCompleted,
+                            onCheckedChange = { checked ->
+                                viewModel.updateChapterStatus(ch.id, if (checked) "COMPLETED" else "NOT_STARTED")
+                            }
+                        )
                     }
                 }
             }

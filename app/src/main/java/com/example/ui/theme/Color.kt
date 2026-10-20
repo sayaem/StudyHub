@@ -20,6 +20,7 @@ val SlateSubtle = Color(0xFF94A3B8)
 // Borders & Surfaces (Light)
 val LightBg = Color(0xFFF4F7FB)
 val CardWhite = Color(0xFFFFFFFF)
+val LightSurface = Color(0xFFFFFFFF)
 val CardBorder = Color(0xFFE8EEF5)
 val SlateBorder = Color(0xFFE8EEF5)
 

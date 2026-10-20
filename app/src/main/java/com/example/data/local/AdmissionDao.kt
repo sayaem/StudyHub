@@ -27,5 +27,5 @@ interface AdmissionDao {
     suspend fun deleteTarget(target: AdmissionTargetEntity)
 
     @Query("DELETE FROM admission_targets WHERE id = :id")
-    suspend fun deleteTargetById(id: Long)
+    suspend fun deleteTargetById(id: Long): Int
 }

@@ -33,14 +33,14 @@ interface RevisionItemDao {
     suspend fun deleteRevision(item: RevisionItemEntity)
 
     @Query("DELETE FROM revision_items WHERE id = :id")
-    suspend fun deleteRevisionById(id: Long)
+    suspend fun deleteRevisionById(id: Long): Int
 
     @Query("UPDATE revision_items SET completedCount = :completed, isCompleted = :isCompleted, lastRevisedAt = :timestamp WHERE id = :id")
-    suspend fun updateProgress(id: Long, completed: Int, isCompleted: Boolean, timestamp: Long)
+    suspend fun updateProgress(id: Long, completed: Int, isCompleted: Boolean, timestamp: Long): Int
 
     @Query("UPDATE revision_items SET completedCount = :completed, isCompleted = :isCompleted, lastRevisedAt = :timestamp, nextRevisionDate = :nextDate WHERE id = :id")
-    suspend fun updateProgressAndNextDate(id: Long, completed: Int, isCompleted: Boolean, timestamp: Long, nextDate: Long)
+    suspend fun updateProgressAndNextDate(id: Long, completed: Int, isCompleted: Boolean, timestamp: Long, nextDate: Long): Int
 
     @Query("UPDATE revision_items SET nextRevisionDate = :nextDate WHERE id = :id")
-    suspend fun postponeRevision(id: Long, nextDate: Long)
+    suspend fun postponeRevision(id: Long, nextDate: Long): Int
 }

@@ -23,5 +23,5 @@ interface StudySessionDao {
     suspend fun updateSession(session: StudySessionEntity)
 
     @Query("DELETE FROM study_sessions WHERE id = :id")
-    suspend fun deleteSessionById(id: Long)
+    suspend fun deleteSessionById(id: Long): Int
 }

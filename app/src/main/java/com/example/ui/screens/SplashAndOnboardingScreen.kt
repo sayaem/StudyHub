@@ -169,6 +169,7 @@ fun SplashScreen(isDarkTheme: Boolean, lang: AppLanguage) {
     }
 }
 
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun OnboardingFlow(
     viewModel: MainViewModel,

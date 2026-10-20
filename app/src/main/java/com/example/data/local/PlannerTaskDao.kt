@@ -30,8 +30,8 @@ interface PlannerTaskDao {
     suspend fun deleteTask(task: PlannerTaskEntity)
 
     @Query("DELETE FROM planner_tasks WHERE id = :id")
-    suspend fun deleteTaskById(id: Long)
+    suspend fun deleteTaskById(id: Long): Int
 
     @Query("UPDATE planner_tasks SET isCompleted = :completed WHERE id = :id")
-    suspend fun updateTaskCompletion(id: Long, completed: Boolean)
+    suspend fun updateTaskCompletion(id: Long, completed: Boolean): Int
 }

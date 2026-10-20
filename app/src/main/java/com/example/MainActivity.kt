@@ -339,11 +339,13 @@ fun StudyHubApp(viewModel: MainViewModel, isDarkTheme: Boolean) {
                     onBack = { viewModel.navigateTo(ScreenDestination.PROFILE) }
                 )
                 ScreenDestination.PRIVACY -> PrivacyPolicyScreen(
+                    viewModel = viewModel,
                     isDarkTheme = isDarkTheme,
                     lang = lang,
                     onBack = { viewModel.navigateBack() }
                 )
                 ScreenDestination.TERMS -> TermsScreen(
+                    viewModel = viewModel,
                     isDarkTheme = isDarkTheme,
                     lang = lang,
                     onBack = { viewModel.navigateBack() }
