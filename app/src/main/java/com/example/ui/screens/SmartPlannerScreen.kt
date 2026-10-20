@@ -289,19 +289,19 @@ fun SmartPlannerScreen(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                SyllabusTopPill(
+                FilterPill(
                     label = AppStrings.tabToday(lang),
                     isSelected = timeRange == "TODAY",
                     isDarkTheme = isDarkTheme,
                     onClick = { viewModel.setPlannerTimeRange("TODAY") }
                 )
-                SyllabusTopPill(
+                FilterPill(
                     label = AppStrings.tabTomorrow(lang),
                     isSelected = timeRange == "TOMORROW",
                     isDarkTheme = isDarkTheme,
                     onClick = { viewModel.setPlannerTimeRange("TOMORROW") }
                 )
-                SyllabusTopPill(
+                FilterPill(
                     label = AppStrings.tabThisWeek(lang),
                     isSelected = timeRange == "THIS_WEEK",
                     isDarkTheme = isDarkTheme,
